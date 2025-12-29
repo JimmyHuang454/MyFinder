@@ -14,6 +14,7 @@ function! myfinder#master#start() abort
         \ {'text': 'Files',   'cmd': 'FilesFinder',   'help': 'Find files in workspace'},
         \ {'text': 'GitFiles','cmd': 'GitFilesFinder','help': 'Git tracked files (git ls-files)'},
         \ {'text': 'GitLog',  'cmd': 'GitLogFinder',  'help': 'Search git log'},
+        \ {'text': 'Colorscheme',  'cmd': 'ColorschemeFinder',  'help': 'Choose and preview color schemes'},
         \ ]
   
   " Sort by usage count (descending)
@@ -23,7 +24,7 @@ function! myfinder#master#start() abort
   for l:def in l:defs
     let l:count = get(s:usage, l:def.cmd, 0)
     let l:count_str = l:count > 0 ? printf('[%d] ', l:count) : ''
-    let l:display = printf('%-10s %s %s', l:def.text, l:def.help, l:count_str)
+    let l:display = printf('%-15s %s %s', l:def.text, l:def.help, l:count_str)
     call add(l:items, {
           \ 'text': l:def.text,
           \ 'display': l:display,

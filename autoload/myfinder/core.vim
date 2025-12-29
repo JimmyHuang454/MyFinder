@@ -24,6 +24,7 @@ function! s:CtxUpdateRes() dict
   call s:ApplyHighLights(self)
   
   call win_execute(self.winid, 'normal! 3G')
+  call s:TriggerPreview(self)
 endfunction
 
 
@@ -93,6 +94,7 @@ function! myfinder#core#start(items, actions, ...) abort
   
   " Select first item (line 3)
   call win_execute(l:ctx.winid, "normal! 3G")
+  call s:TriggerPreview(l:ctx)
 endfunction
 
 function! s:BuildContent(ctx) abort
@@ -234,6 +236,22 @@ function! s:HandleCallback(ctx, key, action, selected) abort
   return 0 
 endfunction
 
+function! s:TriggerPreview(ctx) abort
+  let l:Preview = get(a:ctx.actions, 'preview', '')
+  if empty(l:Preview)
+    let l:Preview = get(a:ctx.default_actions, 'preview', '')
+  endif
+
+  if !empty(l:Preview)
+    let l:line = line('.', a:ctx.winid)
+    let l:index = l:line - 3
+    if l:index >= 0 && l:index < len(a:ctx.matches)
+      let a:ctx.selected = a:ctx.matches[l:index]
+      call call(l:Preview, [], a:ctx)
+    endif
+  endif
+endfunction
+
 function! s:BS() dict
   let self.filter = strcharpart(self.filter, 0, strchars(self.filter) - 1)
   call self.update_res()
@@ -266,13 +284,13 @@ endfunction
 
 function! s:GenericOpenLeft() dict
   call self.quit()
-  execute 'vsplit'
+  execute 'leftabove vsplit'
   call s:OpenItem(self.selected, 'edit')
 endfunction
 
 function! s:GenericOpenRight() dict
   call self.quit()
-  execute 'vsplit'
+  execute 'rightbelow vsplit'
   call s:OpenItem(self.selected, 'edit')
 endfunction
 
@@ -339,6 +357,7 @@ function! s:SelectDown() dict
   let l:max_line = min([len(self.matches), self.render_limit]) + 2
   if l:lnum < l:max_line
     call win_execute(self.winid, "normal! j")
+    call s:TriggerPreview(self)
   endif
 endfunction
 
@@ -346,6 +365,7 @@ function! s:SelectUp() dict
   let l:lnum = line('.', self.winid)
   if l:lnum > 3
     call win_execute(self.winid, "normal! k")
+    call s:TriggerPreview(self)
   endif
 endfunction
 
