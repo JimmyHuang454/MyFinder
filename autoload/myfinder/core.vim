@@ -36,6 +36,7 @@ function! myfinder#core#start(items, actions, ...) abort
         \ 'name': get(l:options, 'name', 'Finder'),
         \ 'name_color': get(l:options, 'name_color', {}),
         \ 'filetype': get(l:options, 'filetype', ''),
+        \ 'syntax': get(l:options, 'syntax', []),
         \ 'filter': '',
         \ 'winid': 0,
         \ 'matches': [], 
@@ -162,6 +163,7 @@ function! s:ApplyHighLights(ctx) abort
   call win_execute(a:ctx.winid, 'highlight link FinderNumber Number')
   call win_execute(a:ctx.winid, 'highlight link FinderStatusAlt WarningMsg')
   call win_execute(a:ctx.winid, 'highlight link FinderNone ErrorMsg')
+  call win_execute(a:ctx.winid, 'highlight link FinderHash Identifier')
   
   " Apply custom or default finder name color
   let l:default_color = {'ctermbg': 6, 'ctermfg': 0, 'guibg': '#56b6c2', 'guifg': '#282c34'}
@@ -176,10 +178,20 @@ function! s:ApplyHighLights(ctx) abort
   call win_execute(a:ctx.winid, 'syntax match FinderCursor /█/ contained')
   
   " Generic highlighting for listings (restricted to line 3+)
+  call win_execute(a:ctx.winid, 'syntax match FinderHash /\%>2l^[0-9a-f]\{7,40\}\ze /')
   call win_execute(a:ctx.winid, 'syntax match FinderNumber /\%>2l\s*\d\+[: ]/ nextgroup=FinderFile')
-  call win_execute(a:ctx.winid, 'syntax match FinderDir /\%>2l.\{-}\//')
+  " Only match dir if it looks like a path (at least one slash and no spaces before it if at start)
+  call win_execute(a:ctx.winid, 'syntax match FinderDir /\%>2l[^ ]\{-}\//')
   call win_execute(a:ctx.winid, 'syntax match FinderStatusAlt /\%>2l\[+\]/')
   call win_execute(a:ctx.winid, 'syntax match FinderNone /No matches/')
+  
+  " Apply custom syntax rules
+  for l:rule in a:ctx.syntax
+    if has_key(l:rule, 'match') && has_key(l:rule, 'link')
+      let l:cmd = printf('syntax match %s /%s/', l:rule.link, l:rule.match)
+      call win_execute(a:ctx.winid, l:cmd)
+    endif
+  endfor
   
   if empty(a:ctx.filter) || empty(a:ctx.matches)
     return

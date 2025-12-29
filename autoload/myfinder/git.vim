@@ -27,7 +27,12 @@ function! myfinder#git#log() abort
         \ 'open_tab': function('s:ShowTab'),
         \ 'open_left': function('s:ShowLeft'),
         \ 'open_right': function('s:ShowRight'),
-        \ }, {'name': 'Git Log'})
+        \ }, {
+        \ 'name': 'Git Log',
+        \ 'syntax': [
+        \   {'match': '\%>2l^[0-9a-f]\{7,40\}\ze ', 'link': 'Constant'}
+        \ ]
+        \ })
 endfunction
 
 function! s:Show() dict
