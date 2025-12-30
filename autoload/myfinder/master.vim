@@ -13,14 +13,14 @@ endfunction
 function! myfinder#master#start() abort
   let l:start_time = reltime()
   let l:defs = [
-        \ {'text': 'Line',    'cmd': 'LineFinder',    'help': 'Search lines in current buffer'},
-        \ {'text': 'Buffer',  'cmd': 'BufferFinder',  'help': 'List and manage buffers'},
-        \ {'text': 'Window',  'cmd': 'WindowFinder',  'help': 'Switch to another window'},
-        \ {'text': 'Mark',    'cmd': 'MarkFinder',    'help': 'Saved marks'},
-        \ {'text': 'MRU',     'cmd': 'MRUFinder',     'help': 'Most Recently Used files'},
-        \ {'text': 'Files',   'cmd': 'FilesFinder',   'help': 'Find files (Smart Git detection)'},
-        \ {'text': 'GitLog',  'cmd': 'GitLogFinder',  'help': 'Search git log'},
-        \ {'text': 'Colorscheme',  'cmd': 'ColorschemeFinder',  'help': 'Choose and preview color schemes'},
+        \ {'text': 'Line',    'cmd': 'FinderLine',    'help': 'Search lines in current buffer'},
+        \ {'text': 'Buffer',  'cmd': 'FinderBuffer',  'help': 'List and manage buffers'},
+        \ {'text': 'Window',  'cmd': 'FinderWindow',  'help': 'Switch to another window'},
+        \ {'text': 'Mark',    'cmd': 'FinderMark',    'help': 'Saved marks'},
+        \ {'text': 'MRU',     'cmd': 'FinderMRU',     'help': 'Most Recently Used files'},
+        \ {'text': 'Files',   'cmd': 'FinderFiles',   'help': 'Find files (Smart Git detection)'},
+        \ {'text': 'GitLog',  'cmd': 'FinderGitLog',  'help': 'Search git log'},
+        \ {'text': 'Colorscheme',  'cmd': 'FinderColorscheme',  'help': 'Choose and preview color schemes'},
         \ ]
   
   " Sort by usage count (descending)

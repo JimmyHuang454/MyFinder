@@ -12,7 +12,7 @@ command! Finder call myfinder#master#start()
 nnoremap mm :call myfinder#mark#add()<CR>
 nnoremap mn :call myfinder#mark#remove()<CR>
 
-function! s:ReloadMyFinder() abort
+function! g:ReloadMyFinder() abort
   let l:plugin_root = fnamemodify(expand('<sfile>'), ':p:h:h')
   let l:autoload_files = glob(l:plugin_root . '/autoload/myfinder/*.vim', 0, 1)
   
@@ -24,4 +24,4 @@ function! s:ReloadMyFinder() abort
   echo 'MyFinder reloaded!'
 endfunction
 
-nnoremap <leader>r :call <SID>ReloadMyFinder()<CR>:Finder<CR>
+nnoremap <leader>r :call g:ReloadMyFinder()<CR>:Finder<CR>
