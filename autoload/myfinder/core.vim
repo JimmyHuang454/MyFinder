@@ -37,6 +37,7 @@ function! myfinder#core#start(items, actions, ...) abort
         \ 'name_color': get(l:options, 'name_color', {}),
         \ 'filetype': get(l:options, 'filetype', ''),
         \ 'syntax': get(l:options, 'syntax', []),
+        \ 'status': get(l:options, 'status', ''),
         \ 'filter': '',
         \ 'winid': 0,
         \ 'matches': [], 
@@ -70,7 +71,6 @@ function! myfinder#core#start(items, actions, ...) abort
   let l:ctx.matches = copy(a:items)
   
   let l:attr = {
-        \ 'title': '',
         \ 'minwidth': l:ctx.width,
         \ 'maxwidth': l:ctx.width,
         \ 'minheight': l:ctx.height,
@@ -82,6 +82,7 @@ function! myfinder#core#start(items, actions, ...) abort
         \ 'cursorline': 1,
         \ 'filter': function('s:FinderFilter'),
         \ 'callback': function('s:FinderCallback'),
+        \ 'footer': (empty(l:ctx.status) ? '' : ' ' . l:ctx.status . ' '),
         \ 'mapping': 0,
         \ }
   
@@ -178,17 +179,29 @@ function! s:ApplyHighLights(ctx) abort
   call win_execute(a:ctx.winid, 'syntax match FinderCursor /█/ contained')
   
   " Generic highlighting for listings (restricted to line 3+)
-  call win_execute(a:ctx.winid, 'syntax match FinderHash /\%>2l^[0-9a-f]\{7,40\}\ze /')
-  call win_execute(a:ctx.winid, 'syntax match FinderNumber /\%>2l\s*\d\+[: ]/ nextgroup=FinderFile')
-  " Only match dir if it looks like a path (at least one slash and no spaces before it if at start)
-  call win_execute(a:ctx.winid, 'syntax match FinderDir /\%>2l[^ ]\{-}\//')
-  call win_execute(a:ctx.winid, 'syntax match FinderStatusAlt /\%>2l\[+\]/')
+  " Only apply defaults if no custom syntax is provided
+  if empty(a:ctx.syntax)
+    call win_execute(a:ctx.winid, 'syntax match FinderHash /\%>2l^[0-9a-f]\{7,40\}\ze /')
+    call win_execute(a:ctx.winid, 'syntax match FinderNumber /\%>2l\s*\d\+[: ]/ nextgroup=FinderFile')
+    call win_execute(a:ctx.winid, 'syntax match FinderDir /\%>2l[^ ]\{-}\//')
+    call win_execute(a:ctx.winid, 'syntax match FinderStatusAlt /\%>2l\[+\]/')
+  endif
   call win_execute(a:ctx.winid, 'syntax match FinderNone /No matches/')
   
   " Apply custom syntax rules
   for l:rule in a:ctx.syntax
     if has_key(l:rule, 'match') && has_key(l:rule, 'link')
-      let l:cmd = printf('syntax match %s /%s/', l:rule.link, l:rule.match)
+      let l:contains = get(l:rule, 'contains', '')
+      let l:contained = get(l:rule, 'contained', 0)
+      let l:opt = ''
+      if !empty(l:contains)
+        let l:opt .= ' contains=' . l:contains
+      endif
+      if l:contained
+        let l:opt .= ' contained'
+      endif
+      
+      let l:cmd = printf('syntax match %s /%s/%s', l:rule.link, l:rule.match, l:opt)
       call win_execute(a:ctx.winid, l:cmd)
     endif
   endfor

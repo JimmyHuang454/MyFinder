@@ -5,7 +5,7 @@ function! myfinder#git#log() abort
     return
   endif
 
-  let l:commits = systemlist('git log --oneline')
+  let l:commits = systemlist('git log --format="%h|%an|%s"')
   if v:shell_error
     echoerr 'Failed to get git log'
     return
@@ -13,11 +13,19 @@ function! myfinder#git#log() abort
 
   let l:items = []
   
-  for l:commit in l:commits
-    let l:hash = split(l:commit)[0]
+  for l:line in l:commits
+    let l:p1 = stridx(l:line, '|')
+    let l:p2 = stridx(l:line, '|', l:p1 + 1)
+    if l:p1 == -1 || l:p2 == -1 | continue | endif
+    let l:hash = l:line[:l:p1-1]
+    let l:author = l:line[l:p1+1 : l:p2-1]
+    let l:subject = l:line[l:p2+1:]
+    
+    let l:display = printf('%-8s %-15.15s %s', l:hash, l:author, l:subject)
+    
     call add(l:items, {
-          \ 'text': l:commit,
-          \ 'display': l:commit,
+          \ 'text': l:display,
+          \ 'display': l:display,
           \ 'hash': l:hash,
           \ })
   endfor
@@ -30,8 +38,11 @@ function! myfinder#git#log() abort
         \ }, {
         \ 'name': 'Git Log',
         \ 'syntax': [
-        \   {'match': '\%>2l^[0-9a-f]\{7,40\}\ze ', 'link': 'Constant'}
-        \ ]
+        \   {'match': '\%>2l\%>0v.*\%<9v',  'link': 'Constant'},
+        \   {'match': '\%>2l\%>9v.*\%<25v', 'link': 'Identifier'},
+        \   {'match': '\%>2l\%>25v.*',       'link': 'Comment'},
+        \ ],
+        \ 'status': 'Git'
         \ })
 endfunction
 
@@ -52,7 +63,7 @@ function! s:ShowTab() dict
   if exists(':Gtabedit')
     execute 'Gtabedit ' . self.selected.hash
   else
-    execute 'tab new'
+    execute 'tabnew'
     execute 'read !git show ' . self.selected.hash
     setlocal buftype=nofile bufhidden=wipe filetype=git
     normal! ggdd
@@ -64,7 +75,7 @@ function! s:ShowLeft() dict
   if exists(':Gvsplit')
     execute 'leftabove Gvsplit ' . self.selected.hash
   else
-    execute 'vnew'
+    execute 'leftabove vnew'
     execute 'read !git show ' . self.selected.hash
     setlocal buftype=nofile bufhidden=wipe filetype=git
     normal! ggdd
@@ -74,9 +85,9 @@ endfunction
 function! s:ShowRight() dict
   call self.quit()
   if exists(':Gvsplit')
-    execute 'Gvsplit ' . self.selected.hash
+    execute 'rightbelow Gvsplit ' . self.selected.hash
   else
-    execute 'vnew'
+    execute 'rightbelow vnew'
     execute 'read !git show ' . self.selected.hash
     setlocal buftype=nofile bufhidden=wipe filetype=git
     normal! ggdd

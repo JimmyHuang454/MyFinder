@@ -11,8 +11,7 @@ function! myfinder#master#start() abort
         \ {'text': 'Window',  'cmd': 'WindowFinder',  'help': 'Switch to another window'},
         \ {'text': 'Mark',    'cmd': 'MarkFinder',    'help': 'Saved marks'},
         \ {'text': 'MRU',     'cmd': 'MRUFinder',     'help': 'Most Recently Used files'},
-        \ {'text': 'Files',   'cmd': 'FilesFinder',   'help': 'Find files in workspace'},
-        \ {'text': 'GitFiles','cmd': 'GitFilesFinder','help': 'Git tracked files (git ls-files)'},
+        \ {'text': 'Files',   'cmd': 'FilesFinder',   'help': 'Find files (Smart Git detection)'},
         \ {'text': 'GitLog',  'cmd': 'GitLogFinder',  'help': 'Search git log'},
         \ {'text': 'Colorscheme',  'cmd': 'ColorschemeFinder',  'help': 'Choose and preview color schemes'},
         \ ]
@@ -24,7 +23,7 @@ function! myfinder#master#start() abort
   for l:def in l:defs
     let l:count = get(s:usage, l:def.cmd, 0)
     let l:count_str = l:count > 0 ? printf('[%d] ', l:count) : ''
-    let l:display = printf('%-15s %s %s', l:def.text, l:def.help, l:count_str)
+    let l:display = printf('%-13s %s %s', l:def.text, l:def.help, l:count_str)
     call add(l:items, {
           \ 'text': l:def.text,
           \ 'display': l:display,
@@ -32,7 +31,14 @@ function! myfinder#master#start() abort
           \ })
   endfor
   
-  call myfinder#core#start(l:items, {'open': function('s:FinderOpen')}, {'name': 'Master'})
+  call myfinder#core#start(l:items, {'open': function('s:FinderOpen')}, {
+        \ 'name': 'Master',
+        \ 'syntax': [
+        \   {'match': '\%>2l\%>0v.*\%<14v', 'link': 'Type'},
+        \   {'match': '\%>2l\%>13v.*',       'link': 'Comment', 'contains': 'Number'},
+        \   {'match': '\[\d\+\]\s*$',        'link': 'Number',  'contained': 1},
+        \ ]
+        \ })
 endfunction
 
 function! s:FinderOpen() dict
