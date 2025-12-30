@@ -62,7 +62,7 @@ function! s:LineFinderOpenRight() dict
   let l:bufnr = winbufnr(self.selected.winid)
   if l:bufnr != -1
       call self.quit()
-      execute 'vsplit'
+      execute 'rightbelow vertical split'
       execute 'buffer ' . l:bufnr
       execute self.selected.lnum
       normal! zz

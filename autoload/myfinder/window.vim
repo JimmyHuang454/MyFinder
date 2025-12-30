@@ -1,3 +1,29 @@
+function! s:OpenTab() dict
+  call self.quit()
+  let l:bufnr = winbufnr(self.selected.target_winid)
+  if l:bufnr != -1
+    execute 'tab split'
+    execute 'buffer ' . l:bufnr
+  endif
+endfunction
+
+function! s:OpenLeft() dict
+  call self.quit()
+  let l:bufnr = winbufnr(self.selected.target_winid)
+  if l:bufnr != -1
+    execute 'leftabove vsplit'
+    execute 'buffer ' . l:bufnr
+  endif
+endfunction
+
+function! s:OpenRight() dict
+  call self.quit()
+  let l:bufnr = winbufnr(self.selected.target_winid)
+  if l:bufnr != -1
+    execute 'rightbelow vertical split'
+    execute 'buffer ' . l:bufnr
+  endif
+endfunction
 
 function! myfinder#window#start() abort
   let l:start_time = reltime()
@@ -18,7 +44,11 @@ function! myfinder#window#start() abort
           \ })
   endfor
   
-  call myfinder#core#start(l:items, {}, {
+  call myfinder#core#start(l:items, {
+        \ 'open_tab': function('s:OpenTab'),
+        \ 'open_left': function('s:OpenLeft'),
+        \ 'open_right': function('s:OpenRight'),
+        \ }, {
         \ 'name': 'Windows',
         \ 'name_color': {'guibg': '#e06c75', 'ctermbg': 1},
         \ 'start_time': l:start_time

@@ -331,7 +331,7 @@ endfunction
 
 function! s:GenericOpenRight() dict
   call self.quit()
-  execute 'rightbelow vsplit'
+  execute 'rightbelow vertical split'
   call s:OpenItem(self.selected, 'edit')
 endfunction
 

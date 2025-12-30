@@ -4,6 +4,12 @@ if !exists('s:usage')
   let s:usage = {}
 endif
 
+function! s:DoNothing() dict
+  echohl MoreMsg
+  echo "[MyFinder-Master] Only Support Enter To Open."
+  echohl None
+endfunction
+
 function! myfinder#master#start() abort
   let l:start_time = reltime()
   let l:defs = [
@@ -32,7 +38,12 @@ function! myfinder#master#start() abort
           \ })
   endfor
   
-  call myfinder#core#start(l:items, {'open': function('s:FinderOpen')}, {
+  call myfinder#core#start(l:items, {
+        \'open': function('s:FinderOpen'),
+        \     'open_tab': function('s:DoNothing'),
+        \'open_left': function('s:DoNothing'),'open_right': function('s:DoNothing'),
+        \}, 
+        \{
         \ 'name': 'Master',
         \ 'syntax': [
         \   {'match': '\%>2l\%>0v.*\%<14v', 'link': 'Type'},

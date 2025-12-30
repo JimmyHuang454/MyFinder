@@ -92,9 +92,9 @@ endfunction
 function! s:OpenRight() dict
   call self.quit()
   if exists(':Gvsplit')
-    execute 'rightbelow Gvsplit ' . self.selected.path
+    execute 'rightbelow vertical Gsplit ' . self.selected.path
   else
-    execute 'rightbelow vsplit'
+    execute 'rightbelow vertical split'
     execute 'edit ' . self.selected.path
   endif
 endfunction
