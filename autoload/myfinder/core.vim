@@ -7,6 +7,7 @@ endfunction
 
 function! s:CtxUpdateRes() dict
   " self is ctx
+  let l:start = reltime()
   if empty(self.filter)
     let self.matches = self.items
     if has_key(self, 'match_positions')
@@ -17,7 +18,7 @@ function! s:CtxUpdateRes() dict
     let self.matches = l:res[0]
     let self.match_positions = l:res[1]
   endif
-
+  
   let l:content = s:BuildContent(self)
   call popup_settext(self.winid, l:content)
   
@@ -25,6 +26,11 @@ function! s:CtxUpdateRes() dict
   
   call win_execute(self.winid, 'normal! 3G')
   call s:TriggerPreview(self)
+
+  let self.search_time = reltimefloat(reltime(l:start))
+  " Re-render header with search time
+  let l:content[0] = s:BuildPrompt(self)
+  call popup_settext(self.winid, l:content)
 endfunction
 
 
@@ -42,6 +48,8 @@ function! myfinder#core#start(items, actions, ...) abort
         \ 'winid': 0,
         \ 'matches': [], 
         \ 'start_idx': 0,
+        \ 'start_time': reltime(),
+        \ 'search_time': 0.0,
         \ 'width': float2nr(&columns * 0.8),
         \ 'height': float2nr(&lines * 0.6),
         \ 'quit': function('s:Quit'),
@@ -99,22 +107,30 @@ function! myfinder#core#start(items, actions, ...) abort
   call s:TriggerPreview(l:ctx)
 endfunction
 
-function! s:BuildContent(ctx) abort
+function! s:BuildPrompt(ctx) abort
   let l:cursor_char = '█'
-  
-  " Build prompt with finder name on the left
   let l:name_str = printf('[%s] ', a:ctx.name)
   let l:prompt = l:name_str . '> ' . a:ctx.filter . l:cursor_char
   
   " Count string on the right
-  let l:cnt_str = printf('(%d/%d)', len(a:ctx.matches), len(a:ctx.items))
+  let l:load_time = reltimefloat(reltime(a:ctx.start_time))
+  if has_key(a:ctx, 'load_time')
+    let l:load_time = a:ctx.search_time
+  else
+    let a:ctx.load_time = l:load_time
+  endif
+  let l:cnt_str = printf('(%d/%d) [%.3fs]', len(a:ctx.matches), len(a:ctx.items), l:load_time)
   let l:p_width = strdisplaywidth(l:prompt)
   let l:c_width = strdisplaywidth(l:cnt_str)
   let l:spaces = a:ctx.width - l:p_width - l:c_width - 1
   if l:spaces < 1
     let l:spaces = 1
   endif
-  let l:prompt .= repeat(' ', l:spaces) . l:cnt_str
+  return l:prompt . repeat(' ', l:spaces) . l:cnt_str
+endfunction
+
+function! s:BuildContent(ctx) abort
+  let l:prompt = s:BuildPrompt(a:ctx)
   
   " Separator with workspace path
   let l:workspace = getcwd()
