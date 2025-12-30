@@ -24,6 +24,37 @@ function! s:SaveMarks(marks) abort
   endtry
 endfunction
 
+if has('signs')
+  call sign_define('MyFinderMark', {'text': 'M>', 'texthl': 'WarningMsg'})
+endif
+
+" Remove mark at current position
+function! myfinder#mark#remove() abort
+  let l:file = expand('%:p')
+  let l:line = line('.')
+  let l:marks = s:LoadMarks()
+  let l:new_marks = []
+  let l:found = 0
+  
+  for l:mark in l:marks
+    if l:mark.file ==# l:file && l:mark.line == l:line
+      let l:found = 1
+      continue
+    endif
+    call add(l:new_marks, l:mark)
+  endfor
+  
+  if l:found
+    call s:SaveMarks(l:new_marks)
+    if has('signs')
+      call sign_unplace('MyFinderMarkGroup', {'buffer': bufnr('%'), 'lnum': l:line})
+    endif
+    echo 'Mark removed.'
+  else
+    echo 'No mark found at current line.'
+  endif
+endfunction
+
 " Add a mark at current position
 function! myfinder#mark#add() abort
   let l:file = expand('%:p')
@@ -40,6 +71,16 @@ function! myfinder#mark#add() abort
   
   let l:marks = s:LoadMarks()
   
+  " Check if mark already exists at this line to avoid duplicates
+  for l:existing in l:marks
+    if l:existing.file ==# l:file && l:existing.line == l:line
+        echohl WarningMsg
+        echo 'Mark already exists at this line.'
+        echohl None
+        return
+    endif
+  endfor
+  
   " Create new mark
   let l:mark = {
         \ 'file': l:file,
@@ -51,6 +92,10 @@ function! myfinder#mark#add() abort
   
   call add(l:marks, l:mark)
   call s:SaveMarks(l:marks)
+  
+  if has('signs')
+    call sign_place(0, 'MyFinderMarkGroup', 'MyFinderMark', bufnr('%'), {'lnum': l:line})
+  endif
   
   echohl MoreMsg
   echo 'Mark added: ' . fnamemodify(l:file, ':~') . ':' . l:line
