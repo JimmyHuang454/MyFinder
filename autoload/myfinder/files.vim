@@ -1,4 +1,5 @@
 function! myfinder#files#start() abort
+  let l:start_time = reltime()
   let l:is_git = 0
   
   " Fugitive integration
@@ -54,7 +55,8 @@ function! myfinder#files#start() abort
         \ }, {
         \ 'name': l:name,
         \ 'name_color': {'guibg': l:bg, 'ctermbg': (l:is_git ? 3 : 2)},
-        \ 'status': l:status
+        \ 'status': l:status,
+        \ 'start_time': l:start_time
         \ })
 endfunction
 

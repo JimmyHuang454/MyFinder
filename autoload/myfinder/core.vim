@@ -48,7 +48,7 @@ function! myfinder#core#start(items, actions, ...) abort
         \ 'winid': 0,
         \ 'matches': [], 
         \ 'start_idx': 0,
-        \ 'start_time': reltime(),
+        \ 'start_time': get(l:options, 'start_time', reltime()),
         \ 'search_time': 0.0,
         \ 'width': float2nr(&columns * 0.8),
         \ 'height': float2nr(&lines * 0.6),

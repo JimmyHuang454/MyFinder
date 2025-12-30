@@ -1,5 +1,6 @@
 
 function! myfinder#mru#start() abort
+  let l:start_time = reltime()
   let l:mru_dict = {}
   let l:items = []
   
@@ -38,6 +39,7 @@ function! myfinder#mru#start() abort
   
   call myfinder#core#start(l:items, {}, {
         \ 'name': 'MRU',
-        \ 'name_color': {'guibg': '#c678dd', 'ctermbg': 5}
+        \ 'name_color': {'guibg': '#c678dd', 'ctermbg': 5},
+        \ 'start_time': l:start_time
         \ })
 endfunction

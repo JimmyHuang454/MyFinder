@@ -1,5 +1,6 @@
 
 function! myfinder#buffer#start() abort
+  let l:start_time = reltime()
   let l:buffers = getbufinfo({'buflisted': 1})
   let l:items = []
   let l:cwd = getcwd()
@@ -31,7 +32,8 @@ function! myfinder#buffer#start() abort
         \ 'delete': function('s:Delete'),
         \ }, {
         \ 'name': 'Buffers',
-        \ 'name_color': {'guibg': '#61afef', 'ctermbg': 4}
+        \ 'name_color': {'guibg': '#61afef', 'ctermbg': 4},
+        \ 'start_time': l:start_time
         \ })
 endfunction
 

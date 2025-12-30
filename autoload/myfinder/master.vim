@@ -5,6 +5,7 @@ if !exists('s:usage')
 endif
 
 function! myfinder#master#start() abort
+  let l:start_time = reltime()
   let l:defs = [
         \ {'text': 'Line',    'cmd': 'LineFinder',    'help': 'Search lines in current buffer'},
         \ {'text': 'Buffer',  'cmd': 'BufferFinder',  'help': 'List and manage buffers'},
@@ -37,7 +38,8 @@ function! myfinder#master#start() abort
         \   {'match': '\%>2l\%>0v.*\%<14v', 'link': 'Type'},
         \   {'match': '\%>2l\%>13v.*',       'link': 'Comment', 'contains': 'Number'},
         \   {'match': '\[\d\+\]\s*$',        'link': 'Number',  'contained': 1},
-        \ ]
+        \ ],
+        \ 'start_time': l:start_time
         \ })
 endfunction
 

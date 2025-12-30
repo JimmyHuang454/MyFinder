@@ -58,6 +58,7 @@ function! myfinder#mark#add() abort
 endfunction
 
 function! myfinder#mark#start() abort
+  let l:start_time = reltime()
   let l:marks = s:LoadMarks()
   
   if empty(l:marks)
@@ -90,7 +91,10 @@ function! myfinder#mark#start() abort
   
   call myfinder#core#start(l:items, {
         \ 'delete': function('s:Delete'),
-        \ }, {'name': 'Marks'})
+        \ }, {
+        \ 'name': 'Marks',
+        \ 'start_time': l:start_time
+        \ })
 endfunction
 
 function! s:Delete() dict

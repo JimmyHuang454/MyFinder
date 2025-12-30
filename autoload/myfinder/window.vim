@@ -1,5 +1,6 @@
 
 function! myfinder#window#start() abort
+  let l:start_time = reltime()
   let l:wins = getwininfo()
   let l:items = []
   
@@ -19,6 +20,7 @@ function! myfinder#window#start() abort
   
   call myfinder#core#start(l:items, {}, {
         \ 'name': 'Windows',
-        \ 'name_color': {'guibg': '#e06c75', 'ctermbg': 1}
+        \ 'name_color': {'guibg': '#e06c75', 'ctermbg': 1},
+        \ 'start_time': l:start_time
         \ })
 endfunction

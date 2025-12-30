@@ -1,5 +1,6 @@
 
 function! myfinder#line#start() abort
+  let l:start_time = reltime()
   let l:lines = getline(1, '$')
   let l:items = []
   let l:winid = win_getid()
@@ -25,6 +26,7 @@ function! myfinder#line#start() abort
         \ 'name': 'Lines',
         \ 'name_color': {'guibg': '#d19a66', 'ctermbg': 3},
         \ 'filetype': &filetype,
+        \ 'start_time': l:start_time
         \ })
 endfunction
 

@@ -1,6 +1,7 @@
 let s:original_colorscheme = ''
 
 function! myfinder#colorscheme#start() abort
+  let l:start_time = reltime()
   let s:original_colorscheme = get(g:, 'colors_name', 'default')
   
   let l:schemes = getcompletion('', 'color')
@@ -15,7 +16,8 @@ function! myfinder#colorscheme#start() abort
         \ 'esc': function('s:Esc'),
         \ }, {
         \ 'name': 'Colorscheme',
-        \ 'name_color': {'guibg': '#e5c07b', 'ctermbg': 3}
+        \ 'name_color': {'guibg': '#e5c07b', 'ctermbg': 3},
+        \ 'start_time': l:start_time
         \ })
 endfunction
 

@@ -1,5 +1,6 @@
 
 function! myfinder#git#log() abort
+  let l:start_time = reltime()
   if !executable('git')
     echoerr 'Git is not executable'
     return
@@ -42,7 +43,8 @@ function! myfinder#git#log() abort
         \   {'match': '\%>2l\%>9v.*\%<25v', 'link': 'Identifier'},
         \   {'match': '\%>2l\%>25v.*',       'link': 'Comment'},
         \ ],
-        \ 'status': 'Git'
+        \ 'status': 'Git',
+        \ 'start_time': l:start_time
         \ })
 endfunction
 
