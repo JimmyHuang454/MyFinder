@@ -13,8 +13,81 @@ function! s:LoadMarks() abort
   catch
     return []
   endtry
-endfunction
-
+ endfunction
+ 
+ function! myfinder#mark#next() abort
+   let l:file = expand('%:p')
+   let l:cur = line('.')
+   let l:marks = s:LoadMarks()
+   let l:candidates = []
+   for l:mark in l:marks
+     if l:mark.file ==# l:file
+       call add(l:candidates, l:mark.line)
+     endif
+   endfor
+   if empty(l:candidates)
+     echo 'No marks in this buffer.'
+     return
+   endif
+   call sort(l:candidates)
+   let l:target = 0
+   for lnum in l:candidates
+     if lnum > l:cur
+       let l:target = lnum
+       break
+     endif
+   endfor
+   if l:target == 0
+     let l:target = l:candidates[0]
+   endif
+   let l:col = 1
+   for l:mark in l:marks
+     if l:mark.file ==# l:file && l:mark.line == l:target
+       let l:col = get(l:mark, 'col', 1)
+       break
+     endif
+   endfor
+   call cursor(l:target, l:col)
+   normal! zz
+ endfunction
+ 
+ function! myfinder#mark#prev() abort
+   let l:file = expand('%:p')
+   let l:cur = line('.')
+   let l:marks = s:LoadMarks()
+   let l:candidates = []
+   for l:mark in l:marks
+     if l:mark.file ==# l:file
+       call add(l:candidates, l:mark.line)
+     endif
+   endfor
+   if empty(l:candidates)
+     echo 'No marks in this buffer.'
+     return
+   endif
+   call sort(l:candidates)
+   let l:target = 0
+   for lnum in l:candidates
+     if lnum < l:cur
+       let l:target = lnum
+     else
+       break
+     endif
+   endfor
+   if l:target == 0
+     let l:target = l:candidates[-1]
+   endif
+   let l:col = 1
+   for l:mark in l:marks
+     if l:mark.file ==# l:file && l:mark.line == l:target
+       let l:col = get(l:mark, 'col', 1)
+       break
+     endif
+   endfor
+   call cursor(l:target, l:col)
+   normal! zz
+ endfunction
+ 
 " Save marks to file
 function! s:SaveMarks(marks) abort
   try

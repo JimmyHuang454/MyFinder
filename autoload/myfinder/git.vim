@@ -87,9 +87,11 @@ endfunction
 function! s:ShowRight() dict
   call self.quit()
   if exists(':Gvsplit')
-    execute 'rightbelow vertical Gsplit ' . self.selected.hash
+    execute 'rightbelow Gvsplit ' . self.selected.hash
   else
-    execute 'rightbelow vertical split'
-    execute 'edit ' . self.selected.hash
+    execute 'rightbelow vnew'
+    execute 'read !git show ' . self.selected.hash
+    setlocal buftype=nofile bufhidden=wipe filetype=git
+    normal! ggdd
   endif
 endfunction

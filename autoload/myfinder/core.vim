@@ -355,7 +355,7 @@ function! s:OpenItem(item, cmd) abort
   
   " Handle file path
   if has_key(a:item, 'file')
-    execute a:cmd . ' ' . a:item.file
+    execute a:cmd . ' ' . fnameescape(a:item.file)
     if has_key(a:item, 'line')
       call cursor(a:item.line, get(a:item, 'col', 1))
       normal! zz
@@ -365,7 +365,7 @@ function! s:OpenItem(item, cmd) abort
   
   " Handle path
   if has_key(a:item, 'path')
-    execute a:cmd . ' ' . a:item.path
+    execute a:cmd . ' ' . fnameescape(a:item.path)
     if has_key(a:item, 'line')
       call cursor(a:item.line, get(a:item, 'col', 1))
       normal! zz

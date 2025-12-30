@@ -63,38 +63,38 @@ endfunction
 function! s:Open() dict
   call self.quit()
   if exists(':Gedit') && !empty(get(self.selected, 'path', ''))
-    execute 'Gedit ' . self.selected.path
+    execute 'Gedit ' . fnameescape(self.selected.path)
   else
-    execute 'edit ' . self.selected.path
+    execute 'edit ' . fnameescape(self.selected.path)
   endif
 endfunction
 
 function! s:OpenTab() dict
   call self.quit()
   if exists(':Gtabedit')
-    execute 'Gtabedit ' . self.selected.path
+    execute 'Gtabedit ' . fnameescape(self.selected.path)
   else
     execute 'tab split'
-    execute 'edit ' . self.selected.path
+    execute 'edit ' . fnameescape(self.selected.path)
   endif
 endfunction
 
 function! s:OpenLeft() dict
   call self.quit()
   if exists(':Gvsplit')
-    execute 'leftabove Gvsplit ' . self.selected.path
+    execute 'leftabove Gvsplit ' . fnameescape(self.selected.path)
   else
     execute 'leftabove vsplit'
-    execute 'edit ' . self.selected.path
+    execute 'edit ' . fnameescape(self.selected.path)
   endif
 endfunction
 
 function! s:OpenRight() dict
   call self.quit()
   if exists(':Gvsplit')
-    execute 'rightbelow vertical Gsplit ' . self.selected.path
+    execute 'rightbelow Gvsplit ' . fnameescape(self.selected.path)
   else
     execute 'rightbelow vertical split'
-    execute 'edit ' . self.selected.path
+    execute 'edit ' . fnameescape(self.selected.path)
   endif
 endfunction

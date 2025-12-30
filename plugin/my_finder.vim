@@ -11,6 +11,8 @@ command! Finder call myfinder#master#start()
 
 nnoremap mm :call myfinder#mark#add()<CR>
 nnoremap mn :call myfinder#mark#remove()<CR>
+nnoremap ]m :call myfinder#mark#next()<CR>
+nnoremap [m :call myfinder#mark#prev()<CR>
 
 function! g:ReloadMyFinder() abort
   let l:plugin_root = fnamemodify(expand('<sfile>'), ':p:h:h')
@@ -24,4 +26,4 @@ function! g:ReloadMyFinder() abort
   echo 'MyFinder reloaded!'
 endfunction
 
-nnoremap <leader>r :call g:ReloadMyFinder()<CR>:Finder<CR>
+" nnoremap <leader>r :call g:ReloadMyFinder()<CR>:Finder<CR>
