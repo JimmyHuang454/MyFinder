@@ -29,7 +29,7 @@ endfunction
 function! s:Open() dict
   call self.quit()
   execute 'colorscheme ' . self.selected.text
-  echo 'Colorscheme set to ' . self.selected.text
+  call myfinder#core#echo('Colorscheme set to ' . self.selected.text, 'success')
 endfunction
 
 function! s:Esc() dict

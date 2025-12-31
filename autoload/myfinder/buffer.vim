@@ -30,6 +30,7 @@ function! myfinder#buffer#start() abort
   
   call myfinder#core#start(l:items, {
         \ 'delete': function('s:Delete'),
+        \ 'preview': function('s:BufferPreview'),
         \ }, {
         \ 'name': 'Buffers',
         \ 'name_color': {'guibg': '#61afef', 'ctermbg': 4},
@@ -73,4 +74,24 @@ function! s:Delete() dict
   let self.items = l:new_items
   let self.filter = ''
   call self.update_res()
+endfunction
+
+function! s:BufferPreview() dict
+  if self.preview_winid == 0
+    return
+  endif
+  let l:bufnr = get(self.selected, 'bufnr', -1)
+  if l:bufnr == -1
+    call popup_settext(self.preview_winid, ['No preview available'])
+    return
+  endif
+  let l:count = len(getbufline(l:bufnr, 1, '$'))
+  let l:end = min([l:count, 200])
+  let l:lines = getbufline(l:bufnr, 1, l:end)
+  if empty(l:lines)
+    let l:lines = ['']
+  endif
+  call popup_settext(self.preview_winid, l:lines)
+  let l:ft = getbufvar(l:bufnr, '&filetype', 'text')
+  call win_execute(self.preview_winid, 'setlocal filetype=' . l:ft)
 endfunction

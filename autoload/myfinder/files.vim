@@ -15,7 +15,6 @@ function! myfinder#files#start() abort
   let l:status = 'Workspace'
   
   if l:is_git
-    let l:cmd = 'git ls-files --cached --others --exclude-standard'
     let l:name = 'Git Files'
     let l:bg = '#e5c07b'
     let l:status = 'Git'
@@ -27,14 +26,23 @@ function! myfinder#files#start() abort
       endif
     endif
 
-    echo 'Finder: Running in Git repository'
+    call myfinder#core#echo('Running in Git repository', 'info')
   else
-    echo 'Finder: Running in Vim workspace'
+    call myfinder#core#echo('Running in Vim workspace', 'info')
   endif
   
-  let l:files = systemlist(l:cmd)
+  if l:is_git
+    try
+      let l:files = fugitive#Execute(['ls-files','--exclude-standard','--cached','--others'])['stdout']
+    catch 
+      call myfinder#core#echo('Run Git Failed', 'error')
+      return 
+    endtry
+  else
+    let l:files = systemlist(l:cmd)
+  endif
   if v:shell_error
-    echoerr 'Failed to list files'
+    call myfinder#core#echo('Failed to list files', 'error')
     return
   endif
 
@@ -52,6 +60,7 @@ function! myfinder#files#start() abort
         \ 'open_tab': function('s:OpenTab'),
         \ 'open_left': function('s:OpenLeft'),
         \ 'open_right': function('s:OpenRight'),
+        \ 'preview': function('s:PreviewFile'),
         \ }, {
         \ 'name': l:name,
         \ 'name_color': {'guibg': l:bg, 'ctermbg': (l:is_git ? 3 : 2)},
@@ -66,6 +75,29 @@ function! s:Open() dict
     execute 'Gedit ' . fnameescape(self.selected.path)
   else
     execute 'edit ' . fnameescape(self.selected.path)
+  endif
+endfunction
+
+function! s:PreviewFile() dict
+  if self.preview_winid == 0
+    return
+  endif
+  let l:path = get(self.selected, 'path', '')
+  if empty(l:path) || !filereadable(l:path)
+    call popup_settext(self.preview_winid, ['No preview available'])
+    return
+  endif
+  let l:lines = readfile(l:path, '', 500)
+  if empty(l:lines)
+    let l:lines = ['']
+  endif
+  call popup_settext(self.preview_winid, l:lines)
+  let l:ft = myfinder#core#GuessFiletype(l:path)
+  if exists('*myfinder#core#GuessFiletype')
+    let l:ft = myfinder#core#GuessFiletype(l:path)
+  endif
+  if !empty(l:ft)
+    call win_execute(self.preview_winid, 'setlocal filetype=' . l:ft)
   endif
 endfunction
 

@@ -1,8 +1,51 @@
-
 let s:finders = {}
+
+if !exists('g:myfinder_preview_enabled')
+  let g:myfinder_preview_enabled = 0
+endif
+if !exists('g:myfinder_preview_delay')
+  let g:myfinder_preview_delay = 200
+endif
+if !exists('g:myfinder_preview_layout')
+  let g:myfinder_preview_layout = 'column'
+endif
+
+if !exists('g:myfinder_popup_borders')
+  let g:myfinder_popup_borders = ["─","│","─","│","╭","╮","╯","╰"]
+endif
+
+function! myfinder#core#echo(msg, ...) abort
+  let l:type = get(a:000, 0, 'info')
+  let l:hl = get({'info': 'MoreMsg', 'success': 'MoreMsg', 'warn': 'WarningMsg', 'error': 'ErrorMsg'}, l:type, 'MoreMsg')
+  execute 'echohl ' . l:hl
+  echo '[MyFinder] ' . a:msg
+  echohl None
+endfunction
+
+function! myfinder#core#toggle_preview() abort
+  let g:myfinder_preview_enabled = !g:myfinder_preview_enabled
+  call myfinder#core#echo('Preview ' . (g:myfinder_preview_enabled ? 'Enabled' : 'Disabled'), g:myfinder_preview_enabled ? 'success' : 'warn')
+endfunction
+
+function! myfinder#core#set_preview_layout(layout) abort
+  if index(['column', 'row'], a:layout) == -1
+    call myfinder#core#echo('Invalid preview layout: ' . a:layout, 'error')
+    return
+  endif
+  let g:myfinder_preview_layout = a:layout
+  call myfinder#core#echo('Preview layout set to ' . a:layout, 'success')
+endfunction
 
 function! s:Quit() dict
   call popup_close(self.winid, -1)
+  if has_key(self, 'preview_timer') && self.preview_timer != -1
+    call timer_stop(self.preview_timer)
+    let self.preview_timer = -1
+  endif
+  if has_key(self, 'preview_winid') && self.preview_winid != 0
+    call popup_close(self.preview_winid, -1)
+    let self.preview_winid = 0
+  endif
 endfunction
 
 function! s:CtxUpdateRes() dict
@@ -25,7 +68,7 @@ function! s:CtxUpdateRes() dict
   call s:ApplyHighLights(self)
   
   call win_execute(self.winid, 'normal! 3G')
-  call s:TriggerPreview(self)
+  call s:TriggerPreview(self, self.preview_delay)
 
   let self.search_time = reltimefloat(reltime(l:start))
   " Re-render header with search time
@@ -36,6 +79,17 @@ endfunction
 
 function! myfinder#core#start(items, actions, ...) abort
   let l:options = get(a:000, 0, {})
+  let l:preview_enabled = get(l:options, 'preview_enabled', g:myfinder_preview_enabled)
+  let l:preview_layout = get(l:options, 'preview_layout', g:myfinder_preview_layout)
+  let l:w = float2nr(&columns * 0.8)
+  let l:h = float2nr(&lines * 0.6)
+  if l:preview_enabled
+    if l:preview_layout ==# 'column'
+      let l:w = float2nr(l:w / 2)
+    else
+      let l:h = float2nr(l:h / 2)
+    endif
+  endif
   let l:ctx = {
         \ 'items': a:items,
         \ 'actions': a:actions,
@@ -50,8 +104,13 @@ function! myfinder#core#start(items, actions, ...) abort
         \ 'start_idx': 0,
         \ 'start_time': get(l:options, 'start_time', reltime()),
         \ 'search_time': 0.0,
-        \ 'width': float2nr(&columns * 0.8),
-        \ 'height': float2nr(&lines * 0.6),
+        \ 'width': l:w,
+        \ 'height': l:h,
+        \ 'preview_enabled': l:preview_enabled,
+        \ 'preview_layout': l:preview_layout,
+        \ 'preview_delay': get(l:options, 'preview_delay', g:myfinder_preview_delay),
+        \ 'preview_winid': 0,
+        \ 'preview_timer': -1,
         \ 'quit': function('s:Quit'),
         \ 'update_res': function('s:CtxUpdateRes'),
         \ 'save_t_ve': '',
@@ -67,6 +126,7 @@ function! myfinder#core#start(items, actions, ...) abort
         \     'delete_a_word': function('s:DeleteAWord'),
         \     'select_up': function('s:SelectUp'),
         \     'select_down': function('s:SelectDown'),
+        \     'preview_once': function('s:PreviewOnce'),
         \     },
         \ }
   
@@ -84,9 +144,9 @@ function! myfinder#core#start(items, actions, ...) abort
         \ 'minheight': l:ctx.height,
         \ 'maxheight': l:ctx.height,
         \ 'border': [1,1,1,1],
-        \ 'borderchars': ['─', '│', '─', '│', '┌', '┐', '┘', '└'],
+        \ 'borderchars': g:myfinder_popup_borders,
         \ 'borderhighlight': ['FinderSeparator'],
-        \ 'padding': [0,1,0,1],
+        \ 'padding': [0,0,0,0],
         \ 'cursorline': 1,
         \ 'filter': function('s:FinderFilter'),
         \ 'callback': function('s:FinderCallback'),
@@ -105,6 +165,57 @@ function! myfinder#core#start(items, actions, ...) abort
   " Select first item (line 3)
   call win_execute(l:ctx.winid, "normal! 3G")
   call s:TriggerPreview(l:ctx)
+
+  if l:ctx.preview_enabled
+    call s:CreatePreviewWindow(l:ctx)
+  endif
+endfunction
+
+function! s:CreatePreviewWindow(ctx) abort
+  if !a:ctx.preview_enabled
+    return
+  endif
+  let l:gap = 1
+  let l:preview_w = a:ctx.width
+  let l:preview_h = a:ctx.height
+  if a:ctx.preview_layout ==# 'column'
+    let l:group_w = a:ctx.width * 2 + l:gap
+    let l:group_h = a:ctx.height
+    let l:start_col = max([1, float2nr((&columns - l:group_w) / 2.0)])
+    let l:start_line = max([1, float2nr((&lines - l:group_h) / 2.0)])
+    " Move main popup to the computed start position
+    call popup_move(a:ctx.winid, {'line': l:start_line, 'col': l:start_col})
+    " Preview to the right
+    let l:preview_col = l:start_col + a:ctx.width + l:gap
+    let l:preview_line = l:start_line
+  else
+    let l:group_w = a:ctx.width
+    let l:group_h = a:ctx.height * 2 + l:gap
+    let l:start_col = max([1, float2nr((&columns - l:group_w) / 2.0)])
+    let l:start_line = max([1, float2nr((&lines - l:group_h) / 2.0)])
+    " Move main popup to the computed start position
+    call popup_move(a:ctx.winid, {'line': l:start_line, 'col': l:start_col})
+    " Preview below
+    let l:preview_line = l:start_line + a:ctx.height + l:gap
+    let l:preview_col = l:start_col
+  endif
+  let l:attr = {
+        \ 'pos': 'topleft',
+        \ 'line': l:preview_line,
+        \ 'col': l:preview_col,
+        \ 'minwidth': l:preview_w,
+        \ 'maxwidth': l:preview_w,
+        \ 'minheight': l:preview_h,
+        \ 'maxheight': l:preview_h,
+        \ 'border': [1,1,1,1],
+        \ 'borderchars': g:myfinder_popup_borders,
+        \ 'borderhighlight': ['FinderSeparator'],
+        \ 'padding': [0,0,0,0],
+        \ 'cursorline': 0,
+        \ 'mapping': 0,
+        \ }
+  let a:ctx.preview_winid = popup_create(['Preview Disabled'], l:attr)
+  call win_execute(a:ctx.preview_winid, 'setlocal buftype=nofile bufhidden=wipe nobuflisted noswapfile')
 endfunction
 
 function! s:BuildPrompt(ctx) abort
@@ -277,20 +388,91 @@ function! s:HandleCallback(ctx, key, action, selected) abort
   return 0 
 endfunction
 
-function! s:TriggerPreview(ctx) abort
+function! s:TriggerPreview(ctx, ...) abort
   let l:Preview = get(a:ctx.actions, 'preview', '')
   if empty(l:Preview)
     let l:Preview = get(a:ctx.default_actions, 'preview', '')
   endif
 
-  if !empty(l:Preview)
-    let l:line = line('.', a:ctx.winid)
-    let l:index = l:line - 3
-    if l:index >= 0 && l:index < len(a:ctx.matches)
-      let a:ctx.selected = a:ctx.matches[l:index]
-      call call(l:Preview, [], a:ctx)
+  if a:ctx.preview_enabled
+    let l:d = get(a:000, 0, a:ctx.preview_delay)
+    if a:ctx.preview_timer != -1
+      call timer_stop(a:ctx.preview_timer)
+      let a:ctx.preview_timer = -1
+    endif
+    if l:d > 0
+      let a:ctx.preview_timer = timer_start(l:d, {-> s:DoPreview(a:ctx, l:Preview)})
+    else
+      call s:DoPreview(a:ctx, l:Preview)
+    endif
+  else
+    if !empty(l:Preview)
+      let l:line = line('.', a:ctx.winid)
+      let l:index = l:line - 3
+      if l:index >= 0 && l:index < len(a:ctx.matches)
+        let a:ctx.selected = a:ctx.matches[l:index]
+        call call(l:Preview, [], a:ctx)
+      endif
     endif
   endif
+endfunction
+
+function! s:GuessFiletype(path) abort
+  let l:ext = tolower(fnamemodify(a:path, ':e'))
+  let l:map = {
+        \ 'vim': 'vim',
+        \ 'tex': 'tex',
+        \ 'vue': 'vue',
+        \ 'lua': 'lua',
+        \ 'js': 'javascript',
+        \ 'ts': 'typescript',
+        \ 'json': 'json',
+        \ 'py': 'python',
+        \ 'go': 'go',
+        \ 'rs': 'rust',
+        \ 'java': 'java',
+        \ 'sh': 'sh',
+        \ 'md': 'markdown',
+        \ 'yaml': 'yaml',
+        \ 'yml': 'yaml',
+        \ }
+  return get(l:map, l:ext, 'text')
+endfunction
+
+function! s:DoPreview(ctx, Preview) abort
+  " Determine selection
+  let l:line = line('.', a:ctx.winid)
+  let l:index = l:line - 3
+  if l:index < 0 || l:index >= len(a:ctx.matches)
+    return
+  endif
+  let a:ctx.selected = a:ctx.matches[l:index]
+  " If custom preview is provided and preview window exists, let finder handle it
+  if !empty(a:Preview)
+    call call(a:Preview, [], a:ctx)
+    return
+  endif
+  if a:ctx.preview_winid == 0
+    return
+  endif
+  " Generic file preview via buffer
+  let l:path = ''
+  if has_key(a:ctx.selected, 'path')
+    let l:path = a:ctx.selected.path
+  elseif has_key(a:ctx.selected, 'file')
+    let l:path = a:ctx.selected.file
+  endif
+  if empty(l:path) || !filereadable(l:path)
+    call popup_settext(a:ctx.preview_winid, ['No preview available'])
+    return
+  endif
+  let l:lines = readfile(l:path, '', 500)
+  if empty(l:lines)
+    let l:lines = ['']
+  endif
+  call popup_settext(a:ctx.preview_winid, l:lines)
+  let l:ft = s:GuessFiletype(l:path)
+  call win_execute(a:ctx.preview_winid, 'setlocal filetype=' . l:ft)
 endfunction
 
 function! s:BS() dict
@@ -398,7 +580,7 @@ function! s:SelectDown() dict
   let l:max_line = min([len(self.matches), self.render_limit]) + 2
   if l:lnum < l:max_line
     call win_execute(self.winid, "normal! j")
-    call s:TriggerPreview(self)
+    call s:TriggerPreview(self, 0)
   endif
 endfunction
 
@@ -406,7 +588,7 @@ function! s:SelectUp() dict
   let l:lnum = line('.', self.winid)
   if l:lnum > 3
     call win_execute(self.winid, "normal! k")
-    call s:TriggerPreview(self)
+    call s:TriggerPreview(self, 0)
   endif
 endfunction
 
@@ -427,7 +609,7 @@ function! s:FinderFilter(winid, key) abort
     let l:action = 'clear'
   elseif a:key == "\<C-j>" || a:key == "\<C-n>" || a:key == "\<Down>"
     let l:action = 'select_down'
-  elseif a:key == "\<C-k>" || a:key == "\<C-p>" || a:key == "\<Up>"
+  elseif a:key == "\<C-k>" || a:key == "\<Up>"
     let l:action = 'select_up'
   elseif a:key == "\<CR>"
     let l:action = 'open'
@@ -437,6 +619,8 @@ function! s:FinderFilter(winid, key) abort
     let l:action = 'open_right'
   elseif a:key == "\<C-t>"
     let l:action = 'open_tab'
+  elseif a:key == "\<C-p>"
+    let l:action = 'preview_once'
   elseif a:key == "\<C-d>"
     let l:action = 'delete'
   elseif a:key =~ '^\p$'
@@ -460,6 +644,34 @@ function! s:FinderFilter(winid, key) abort
   endif
   
   return 1
+endfunction
+
+function! s:PreviewOnce() dict
+  if self.preview_enabled
+    call s:TriggerPreview(self, 0)
+    return
+  endif
+  let self.preview_enabled = 1
+  " Recompute dimensions to split equally
+  if self.preview_layout ==# 'column'
+    let self.width = float2nr(self.width / 2)
+  else
+    let self.height = float2nr(self.height / 2)
+  endif
+  let self.render_limit = self.height - 2
+  " Resize and re-render main popup
+  call popup_setoptions(self.winid, {
+        \ 'minwidth': self.width,
+        \ 'maxwidth': self.width,
+        \ 'minheight': self.height,
+        \ 'maxheight': self.height
+        \ })
+  let l:content = s:BuildContent(self)
+  call popup_settext(self.winid, l:content)
+  call s:ApplyHighLights(self)
+  " Create and center preview window next to main
+  call s:CreatePreviewWindow(self)
+  call s:TriggerPreview(self, 0)
 endfunction
 
 function! s:FinderCallback(winid, result) abort

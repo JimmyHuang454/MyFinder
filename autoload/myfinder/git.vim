@@ -2,13 +2,13 @@
 function! myfinder#git#log() abort
   let l:start_time = reltime()
   if !executable('git')
-    echoerr 'Git is not executable'
+    call myfinder#core#echo('Git is not executable', 'error')
     return
   endif
 
   let l:commits = systemlist('git log --format="%h|%an|%s"')
   if v:shell_error
-    echoerr 'Failed to get git log'
+    call myfinder#core#echo('Failed to get git log', 'error')
     return
   endif
 

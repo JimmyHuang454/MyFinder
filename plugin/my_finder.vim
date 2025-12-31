@@ -9,10 +9,9 @@ command! FinderGitLog call myfinder#git#log()
 command! FinderColorscheme call myfinder#colorscheme#start()
 command! Finder call myfinder#master#start()
 
-nnoremap mm :call myfinder#mark#add()<CR>
-nnoremap mn :call myfinder#mark#remove()<CR>
-nnoremap ]m :call myfinder#mark#next()<CR>
-nnoremap [m :call myfinder#mark#prev()<CR>
+nnoremap mm :call myfinder#mark#toggle()<CR>
+nnoremap mj :call myfinder#mark#next()<CR>
+nnoremap mk :call myfinder#mark#prev()<CR>
 
 function! g:ReloadMyFinder() abort
   let l:plugin_root = fnamemodify(expand('<sfile>'), ':p:h:h')
@@ -23,7 +22,15 @@ function! g:ReloadMyFinder() abort
   endfor
   
   execute 'source ' . expand('<sfile>')
-  echo 'MyFinder reloaded!'
+  call myfinder#core#echo('MyFinder reloaded!', 'success')
 endfunction
 
 " nnoremap <leader>r :call g:ReloadMyFinder()<CR>:Finder<CR>
+
+command! FinderTogglePreview call myfinder#core#toggle_preview()
+command! -nargs=1 FinderPreviewLayout call myfinder#core#set_preview_layout(<q-args>)
+
+augroup MyFinderMarks
+  autocmd!
+  autocmd BufEnter * call myfinder#mark#restore_signs_for_buffer()
+augroup END

@@ -5,9 +5,7 @@ if !exists('s:usage')
 endif
 
 function! s:DoNothing() dict
-  echohl MoreMsg
-  echo "[MyFinder-Master] Only Support Enter To Open."
-  echohl None
+  call myfinder#core#echo('Only Support Enter To Open.', 'info')
 endfunction
 
 function! myfinder#master#start() abort

@@ -15,6 +15,55 @@ function! s:LoadMarks() abort
   endtry
  endfunction
  
+ function! myfinder#mark#toggle() abort
+   let l:file = expand('%:p')
+   if empty(l:file)
+     return
+   endif
+   let l:line = line('.')
+   let l:col = col('.')
+   let l:text = getline('.')
+   let l:marks = s:LoadMarks()
+   let l:exists = 0
+   let l:new_marks = []
+   for l:mark in l:marks
+     if l:mark.file ==# l:file && l:mark.line == l:line
+       let l:exists = 1
+       continue
+     endif
+     call add(l:new_marks, l:mark)
+   endfor
+   if l:exists
+     call s:SaveMarks(l:new_marks)
+     if has('signs')
+       let l:buf = bufnr('%')
+       let l:placed = sign_getplaced(l:buf, {'group': 'MyFinderMarkGroup'})
+       if !empty(l:placed) && has_key(l:placed[0], 'signs')
+         for l:s in l:placed[0].signs
+           if get(l:s, 'lnum', -1) == l:line && get(l:s, 'name', '') ==# 'MyFinderMark'
+             call sign_unplace('MyFinderMarkGroup', {'id': l:s.id, 'buffer': l:buf})
+           endif
+         endfor
+       endif
+     endif
+     echo 'Mark removed.'
+     return
+   endif
+   let l:mark = {
+         \ 'file': l:file,
+         \ 'line': l:line,
+         \ 'col': l:col,
+         \ 'text': l:text,
+         \ 'time': strftime('%Y-%m-%d %H:%M:%S'),
+         \ }
+   call add(l:marks, l:mark)
+   call s:SaveMarks(l:marks)
+   if has('signs')
+     call sign_place(0, 'MyFinderMarkGroup', 'MyFinderMark', bufnr('%'), {'lnum': l:line})
+   endif
+   call myfinder#core#echo('Mark added.', 'success')
+ endfunction
+ 
  function! myfinder#mark#next() abort
    let l:file = expand('%:p')
    let l:cur = line('.')
@@ -26,7 +75,7 @@ function! s:LoadMarks() abort
      endif
    endfor
    if empty(l:candidates)
-     echo 'No marks in this buffer.'
+     call myfinder#core#echo('No marks in this buffer.', 'warn')
      return
    endif
    call sort(l:candidates)
@@ -62,7 +111,7 @@ function! s:LoadMarks() abort
      endif
    endfor
    if empty(l:candidates)
-     echo 'No marks in this buffer.'
+     call myfinder#core#echo('No marks in this buffer.', 'warn')
      return
    endif
    call sort(l:candidates)
@@ -93,21 +142,39 @@ function! s:SaveMarks(marks) abort
   try
     call writefile([json_encode(a:marks)], s:marks_file)
   catch
-    echoerr 'Failed to save marks: ' . v:exception
+    call myfinder#core#echo('Failed to save marks: ' . v:exception, 'error')
   endtry
 endfunction
 
+function! myfinder#mark#restore_signs_for_buffer() abort
+  if !has('signs')
+    return
+  endif
+  let l:file = expand('%:p')
+  if empty(l:file)
+    return
+  endif
+  let l:buf = bufnr('%')
+  " Clear existing signs for this buffer/group to avoid duplicates
+  call sign_unplace('MyFinderMarkGroup', {'buffer': l:buf})
+  let l:marks = s:LoadMarks()
+  for l:mark in l:marks
+    if l:mark.file ==# l:file
+      call sign_place(0, 'MyFinderMarkGroup', 'MyFinderMark', l:buf, {'lnum': l:mark.line})
+    endif
+  endfor
+endfunction
 if has('signs')
   call sign_define('MyFinderMark', {'text': 'M>', 'texthl': 'WarningMsg'})
 endif
 
 " Remove mark at current position
-function! myfinder#mark#remove() abort
-  let l:file = expand('%:p')
-  let l:line = line('.')
-  let l:marks = s:LoadMarks()
-  let l:new_marks = []
-  let l:found = 0
+ function! myfinder#mark#remove() abort
+   let l:file = expand('%:p')
+   let l:line = line('.')
+   let l:marks = s:LoadMarks()
+   let l:new_marks = []
+   let l:found = 0
   
   for l:mark in l:marks
     if l:mark.file ==# l:file && l:mark.line == l:line
@@ -117,24 +184,30 @@ function! myfinder#mark#remove() abort
     call add(l:new_marks, l:mark)
   endfor
   
-  if l:found
-    call s:SaveMarks(l:new_marks)
-    if has('signs')
-      call sign_unplace('MyFinderMarkGroup', {'buffer': bufnr('%'), 'lnum': l:line})
-    endif
-    echo 'Mark removed.'
-  else
-    echo 'No mark found at current line.'
-  endif
+   if l:found
+     call s:SaveMarks(l:new_marks)
+     if has('signs')
+       let l:buf = bufnr('%')
+       let l:placed = sign_getplaced(l:buf, {'group': 'MyFinderMarkGroup'})
+       if !empty(l:placed) && has_key(l:placed[0], 'signs')
+         for l:s in l:placed[0].signs
+           if get(l:s, 'lnum', -1) == l:line && get(l:s, 'name', '') ==# 'MyFinderMark'
+             call sign_unplace('MyFinderMarkGroup', {'id': l:s.id, 'buffer': l:buf})
+           endif
+         endfor
+       endif
+     endif
+     call myfinder#core#echo('Mark removed.', 'success')
+   else
+     call myfinder#core#echo('No mark found at current line.', 'warn')
+   endif
 endfunction
 
 " Add a mark at current position
 function! myfinder#mark#add() abort
   let l:file = expand('%:p')
   if empty(l:file)
-    echohl WarningMsg
-    echo 'Cannot mark [No Name] buffer'
-    echohl None
+    call myfinder#core#echo('Cannot mark [No Name] buffer', 'warn')
     return
   endif
   
@@ -147,9 +220,7 @@ function! myfinder#mark#add() abort
   " Check if mark already exists at this line to avoid duplicates
   for l:existing in l:marks
     if l:existing.file ==# l:file && l:existing.line == l:line
-        echohl WarningMsg
-        echo 'Mark already exists at this line.'
-        echohl None
+        call myfinder#core#echo('Mark already exists at this line.', 'warn')
         return
     endif
   endfor
@@ -170,9 +241,7 @@ function! myfinder#mark#add() abort
     call sign_place(0, 'MyFinderMarkGroup', 'MyFinderMark', bufnr('%'), {'lnum': l:line})
   endif
   
-  echohl MoreMsg
-  echo 'Mark added: ' . fnamemodify(l:file, ':~') . ':' . l:line
-  echohl None
+  call myfinder#core#echo('Mark added: ' . fnamemodify(l:file, ':~') . ':' . l:line, 'success')
 endfunction
 
 function! myfinder#mark#start() abort
@@ -180,9 +249,7 @@ function! myfinder#mark#start() abort
   let l:marks = s:LoadMarks()
   
   if empty(l:marks)
-    echohl WarningMsg
-    echo 'No marks found. Use mm to add marks.'
-    echohl None
+    call myfinder#core#echo('No marks found. Use mm to add marks.', 'warn')
     return
   endif
   
@@ -195,7 +262,7 @@ function! myfinder#mark#start() abort
       let l:rel_path = fnamemodify(l:mark.file, ':~')
     endif
     
-    let l:display = printf('%s:%d  %s', l:rel_path, l:mark.line, l:mark.text)
+    let l:display = printf('%s %4d: %s', l:rel_path, l:mark.line, l:mark.text)
     call add(l:items, {
           \ 'text': l:display,
           \ 'display': l:display,
