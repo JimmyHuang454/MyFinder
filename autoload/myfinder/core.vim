@@ -439,6 +439,10 @@ function! s:GuessFiletype(path) abort
   return get(l:map, l:ext, 'text')
 endfunction
 
+function! myfinder#core#GuessFiletype(path) abort
+  return s:GuessFiletype(a:path)
+endfunction
+
 function! s:DoPreview(ctx, Preview) abort
   " Determine selection
   let l:line = line('.', a:ctx.winid)

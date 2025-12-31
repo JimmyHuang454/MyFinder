@@ -276,6 +276,7 @@ function! myfinder#mark#start() abort
   
   call myfinder#core#start(l:items, {
         \ 'delete': function('s:Delete'),
+        \ 'preview': function('s:MarkPreview'),
         \ }, {
         \ 'name': 'Marks',
         \ 'start_time': l:start_time
@@ -318,4 +319,31 @@ function! s:Delete() dict
   let self.items = l:new_items
   let self.filter = ''
   call self.update_res()
+endfunction
+
+function! s:MarkPreview() dict
+  if self.preview_winid == 0
+    return
+  endif
+  let l:path = get(self.selected, 'file', '')
+  if empty(l:path) || !filereadable(l:path)
+    call popup_settext(self.preview_winid, ['No preview available'])
+    return
+  endif
+  let l:lnum = get(self.selected, 'line', 1)
+  let l:start = max([1, l:lnum - 20])
+  let l:end = l:lnum + 20
+  let l:head = readfile(l:path, '', l:end)
+  let l:lines = l:head[l:start - 1 :]
+  if empty(l:lines)
+    let l:lines = ['']
+  endif
+  call popup_settext(self.preview_winid, l:lines)
+  let l:ft = myfinder#core#GuessFiletype(l:path)
+  call win_execute(self.preview_winid, 'setlocal filetype=' . l:ft)
+  let l:rel = l:lnum - l:start + 1
+  let l:len = strdisplaywidth(get(l:lines, l:rel - 1, ''))
+  call win_execute(self.preview_winid, 'call clearmatches()')
+  call win_execute(self.preview_winid, 'highlight link FinderPreviewLine Search')
+  call win_execute(self.preview_winid, "call matchaddpos('FinderPreviewLine', [[" . l:rel . ", 1, " . l:len . "]])")
 endfunction
