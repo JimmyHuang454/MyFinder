@@ -7,15 +7,6 @@ function! s:OpenTab() dict
   endif
 endfunction
 
-function! s:OpenLeft() dict
-  call self.quit()
-  let l:bufnr = winbufnr(self.selected.target_winid)
-  if l:bufnr != -1
-    execute 'leftabove vsplit'
-    execute 'buffer ' . l:bufnr
-  endif
-endfunction
-
 function! s:OpenRight() dict
   call self.quit()
   let l:bufnr = winbufnr(self.selected.target_winid)
@@ -35,7 +26,7 @@ function! myfinder#window#start() abort
     if empty(l:bufname)
       let l:bufname = '[No Name]'
     endif
-    let l:text = printf('%4d:%-3d %s', l:w.tabnr, l:w.winnr, l:bufname)
+    let l:text = printf('%3d:%-3d %s', l:w.tabnr, l:w.winnr, l:bufname)
     let l:item = {
           \ 'text': l:text,
           \ 'display': l:text,
@@ -49,9 +40,8 @@ function! myfinder#window#start() abort
   endfor
   
   call myfinder#core#start(l:items, {
-        \ 'open_tab': function('s:OpenTab'),
-        \ 'open_left': function('s:OpenLeft'),
-        \ 'open_right': function('s:OpenRight'),
+        \ 'open_with_new_tab': function('s:OpenTab'),
+        \ 'open_vertically': function('s:OpenRight'),
         \ }, {
         \ 'name': 'Windows',
         \ 'name_color': {'guibg': '#e06c75', 'ctermbg': 1},

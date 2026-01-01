@@ -33,9 +33,8 @@ function! myfinder#git#log() abort
   
   call myfinder#core#start(l:items, {
         \ 'open': function('s:Show'),
-        \ 'open_tab': function('s:ShowTab'),
-        \ 'open_left': function('s:ShowLeft'),
-        \ 'open_right': function('s:ShowRight'),
+        \ 'open_with_new_tab': function('s:ShowTab'),
+        \ 'open_vertically': function('s:ShowRight'),
         \ }, {
         \ 'name': 'Git Log',
         \ 'syntax': [
@@ -66,18 +65,6 @@ function! s:ShowTab() dict
     execute 'Gtabedit ' . self.selected.hash
   else
     execute 'tabnew'
-    execute 'read !git show ' . self.selected.hash
-    setlocal buftype=nofile bufhidden=wipe filetype=git
-    normal! ggdd
-  endif
-endfunction
-
-function! s:ShowLeft() dict
-  call self.quit()
-  if exists(':Gvsplit')
-    execute 'leftabove Gvsplit ' . self.selected.hash
-  else
-    execute 'leftabove vnew'
     execute 'read !git show ' . self.selected.hash
     setlocal buftype=nofile bufhidden=wipe filetype=git
     normal! ggdd

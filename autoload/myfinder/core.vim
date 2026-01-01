@@ -124,9 +124,9 @@ function! myfinder#core#start(items, actions, ...) abort
         \ 'default_actions': {
         \     'esc': function('s:ESC'), 
         \     'open': function('s:GenericOpen'),
-        \     'open_tab': function('s:GenericOpenTab'),
-        \     'open_left': function('s:GenericOpenLeft'),
-        \     'open_right': function('s:GenericOpenRight'),
+        \     'open_with_new_tab': function('s:GenericOpenTab'),
+        \     'open_horizontally': function('s:GenericOpenHorizontally'),
+        \     'open_vertically': function('s:GenericOpenVertically'),
         \     'bs': function('s:BS'),
         \     'clear': function('s:CLEAR'),
         \     'delete_a_word': function('s:DeleteAWord'),
@@ -136,6 +136,61 @@ function! myfinder#core#start(items, actions, ...) abort
         \     'copy_path': function('s:CopyPath'),
         \     },
         \ }
+  
+  " Default key mappings
+  let l:default_keys = {
+        \ "\<Esc>": 'esc',
+        \ "\<C-c>": 'esc',
+        \ "\<BS>": 'bs',
+        \ "\<Del>": 'bs',
+        \ "\<C-h>": 'bs',
+        \ "\<C-w>": 'delete_a_word',
+        \ "\<C-u>": 'clear',
+        \ "\<C-j>": 'select_down',
+        \ "\<C-n>": 'select_down',
+        \ "\<Down>": 'select_down',
+        \ "\<C-k>": 'select_up',
+        \ "\<Up>": 'select_up',
+        \ "\<CR>": 'open',
+        \ "\<C-x>": 'open_horizontally',
+        \ "\<C-]>": 'open_vertically',
+        \ "\<C-t>": 'open_with_new_tab',
+        \ "\<C-p>": 'preview_once',
+        \ "\<C-d>": 'delete',
+        \ "\<C-y>": 'copy_path',
+        \ "\<Tab>": 'select_action',
+        \ }
+  
+  " Merge user defined mappings
+  let l:user_mappings = get(g:, 'myfinder_mappings', {})
+  let l:user_keys = {}
+
+  " Support both key:action and action:key formats
+  for [l:k, l:v] in items(l:user_mappings)
+    if has_key(l:ctx.default_actions, l:k) || has_key(l:ctx.actions, l:k)
+        " k is action, v is key
+        let l:user_keys[l:v] = l:k
+    else
+        " k is key, v is action
+        let l:user_keys[l:k] = l:v
+    endif
+  endfor
+  
+  let l:ctx.key_map = extend(copy(l:default_keys), l:user_keys)
+  
+  " Merge finder specific mappings
+  let l:finder_mappings = get(l:options, 'mappings', {})
+  let l:finder_keys = {}
+  for [l:k, l:v] in items(l:finder_mappings)
+    if has_key(l:ctx.default_actions, l:k) || has_key(l:ctx.actions, l:k)
+        " k is action, v is key
+        let l:finder_keys[l:v] = l:k
+    else
+        " k is key, v is action
+        let l:finder_keys[l:k] = l:v
+    endif
+  endfor
+  call extend(l:ctx.key_map, l:finder_keys)
   
   " Reserve lines for Prompt (1), Separator (1)
   let l:ctx.render_limit = l:ctx.height - 2
@@ -161,6 +216,7 @@ function! myfinder#core#start(items, actions, ...) abort
         \ 'callback': function('s:FinderCallback'),
         \ 'footer': (empty(l:ctx.status) ? '' : ' ' . l:ctx.status . ' '),
         \ 'mapping': 0,
+        \ 'wrap': 0,
         \ }
   
   let l:content = s:BuildContent(l:ctx)
@@ -462,7 +518,7 @@ function! s:HandleCallback(ctx, key, action, selected) abort
   
   if !empty(l:Callback)
     " Prevent actions that require selection if no item is selected
-    if empty(a:selected) && index(['open', 'open_tab', 'open_left', 'open_right', 'delete'], a:action) != -1
+    if empty(a:selected) && index(['open', 'open_with_new_tab', 'open_vertically', 'delete'], a:action) != -1
       return 0
     endif
     let a:ctx.selected = a:selected
@@ -595,13 +651,13 @@ function! s:GenericOpenTab() dict
   call s:OpenItem(self.selected, 'edit')
 endfunction
 
-function! s:GenericOpenLeft() dict
+function! s:GenericOpenHorizontally() dict
   call self.quit()
-  execute 'leftabove vsplit'
+  execute 'split'
   call s:OpenItem(self.selected, 'edit')
 endfunction
 
-function! s:GenericOpenRight() dict
+function! s:GenericOpenVertically() dict
   call self.quit()
   execute 'rightbelow vertical split'
   call s:OpenItem(self.selected, 'edit')
@@ -697,34 +753,9 @@ function! s:FinderFilter(winid, key) abort
     return 0
   endif
 
-  let l:action = ''
-  if a:key == "\<Esc>" || a:key == "\<C-c>"
-    let l:action = 'esc'
-  elseif a:key == "\<BS>" || a:key == "\<Del>" || a:key == "\<C-h>"
-    let l:action = 'bs'
-  elseif a:key == "\<C-w>"
-    let l:action = 'delete_a_word'
-  elseif a:key == "\<C-u>"
-    let l:action = 'clear'
-  elseif a:key == "\<C-j>" || a:key == "\<C-n>" || a:key == "\<Down>"
-    let l:action = 'select_down'
-  elseif a:key == "\<C-k>" || a:key == "\<Up>"
-    let l:action = 'select_up'
-  elseif a:key == "\<CR>"
-    let l:action = 'open'
-  elseif a:key == "\<C-S-]>"
-    let l:action = 'open_left'
-  elseif a:key == "\<C-]>"
-    let l:action = 'open_right'
-  elseif a:key == "\<C-t>"
-    let l:action = 'open_tab'
-  elseif a:key == "\<C-p>"
-    let l:action = 'preview_once'
-  elseif a:key == "\<C-d>"
-    let l:action = 'delete'
-  elseif a:key == "\<C-y>"
-    let l:action = 'copy_path'
-  elseif a:key == "\<Tab>"
+  let l:action = get(l:ctx.key_map, a:key, '')
+
+  if l:action ==# 'select_action'
     let l:line = line('.', a:winid)
     if l:line < 3
       let l:line = 3
@@ -737,7 +768,9 @@ function! s:FinderFilter(winid, key) abort
     endif
     call s:ShowActions(l:ctx)
     return 1
-  elseif a:key =~ '^\p$'
+  endif
+
+  if empty(l:action) && a:key =~ '^\p$'
     let l:ctx.filter .= a:key
     call l:ctx.update_res()
     return 1
@@ -847,9 +880,9 @@ function! s:ShowActions(ctx) abort
   " Map of action name to shortcut char
   let l:shortcuts = {
         \ 'open': 'o',
-        \ 'open_tab': 't',
-        \ 'open_left': '[',
-        \ 'open_right': ']',
+        \ 'open_with_new_tab': 't',
+        \ 'open_horizontally': 'x',
+        \ 'open_vertically': ']',
         \ 'delete': 'd',
         \ 'preview_once': 'p',
         \ 'copy_path': 'y',
@@ -863,7 +896,7 @@ function! s:ShowActions(ctx) abort
   
   " File/Path related actions
   if l:has_path
-    for l:a in ['open', 'open_tab', 'open_right', 'open_left', 'copy_path', 'preview_once']
+    for l:a in ['open', 'open_with_new_tab', 'open_horizontally', 'open_vertically', 'copy_path', 'preview_once']
         if index(l:avail, l:a) == -1
             call add(l:avail, l:a)
         endif
@@ -883,6 +916,8 @@ function! s:ShowActions(ctx) abort
   let l:lines = []
   let l:action_map = {}
   
+  let l:used_keys = values(l:shortcuts)
+  
   for l:act in l:avail
     " Skip preview if already enabled
     if l:act ==# 'preview_once' && get(a:ctx, 'preview_enabled', 0)
@@ -891,8 +926,27 @@ function! s:ShowActions(ctx) abort
 
     let l:key = get(l:shortcuts, l:act, '')
     if empty(l:key)
+        " Auto-assign key
+        let l:c = tolower(l:act[0])
+        if index(l:used_keys, l:c) == -1
+             let l:key = l:c
+        else
+             " Try to find an unused letter a-z
+             for l:i in range(char2nr('a'), char2nr('z'))
+                let l:k = nr2char(l:i)
+                if index(l:used_keys, l:k) == -1
+                    let l:key = l:k
+                    break
+                endif
+             endfor
+        endif
+    endif
+    
+    if empty(l:key)
         continue
     endif
+
+    call add(l:used_keys, l:key)
     call add(l:lines, printf('%s %s', l:key, l:act))
     let l:action_map[l:key] = l:act
   endfor

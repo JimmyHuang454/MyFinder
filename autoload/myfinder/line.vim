@@ -16,9 +16,8 @@ function! myfinder#line#start() abort
   
   call myfinder#core#start(l:items, {
         \ 'open': function('s:LineFinderOpen'),
-        \ 'open_tab': function('s:LineFinderOpenTab'),
-        \ 'open_left': function('s:LineFinderOpenLeft'),
-        \ 'open_right': function('s:LineFinderOpenRight'),
+        \ 'open_with_new_tab': function('s:LineFinderOpenTab'),
+        \ 'open_vertically': function('s:LineFinderOpenRight'),
         \ 'preview': function('s:LineFinderPreview'),
         \ }, {
         \ 'name': 'Lines',
@@ -58,10 +57,12 @@ function! s:LineFinderPreview() dict
   " Highlight the target line within preview
   let l:rel = l:lnum - l:start + 1
   let l:len = strlen(get(l:lines, l:rel - 1, ''))
-  call win_execute(self.preview_winid, 'call clearmatches()')
-  call win_execute(self.preview_winid, 'highlight link FinderPreviewLine Search')
-  call win_execute(self.preview_winid, "call matchaddpos('FinderPreviewLine', [[" . l:rel . ", 1, " . l:len . "]])")
-  call win_execute(self.preview_winid, 'normal! ' . l:rel . 'G0zz')
+  call win_execute(self.preview_winid, [
+        \ 'call clearmatches()',
+        \ 'highlight link FinderPreviewLine Search',
+        \ "call matchaddpos('FinderPreviewLine', [[" . l:rel . ", 1, " . l:len . "]])",
+        \ 'normal! ' . l:rel . 'G0zz',
+        \ ])
 endfunction
 
 function! s:LineFinderOpenTab() dict
@@ -69,17 +70,6 @@ function! s:LineFinderOpenTab() dict
   if l:bufnr != -1
       call self.quit()
       execute 'tab split'
-      execute 'buffer ' . l:bufnr
-      execute self.selected.lnum
-      normal! zz
-  endif
-endfunction
-
-function! s:LineFinderOpenLeft() dict
-  let l:bufnr = winbufnr(self.selected.winid)
-  if l:bufnr != -1
-      call self.quit()
-      execute 'vsplit'
       execute 'buffer ' . l:bufnr
       execute self.selected.lnum
       normal! zz

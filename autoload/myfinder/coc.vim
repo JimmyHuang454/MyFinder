@@ -139,6 +139,7 @@ endfunction
 
 " --- Extensions ---
 function! myfinder#coc#extensions() abort
+  let l:start_time = reltime()
   if !exists('*CocAction')
     call myfinder#core#echo('coc.nvim not installed', 'error')
     return
@@ -149,13 +150,33 @@ function! myfinder#coc#extensions() abort
     return
   endif
   
-  let l:items = s:BuildExtItems(l:exts)
+
+  let l:items = []
+  for l:e in l:exts
+    let l:state = get(l:e, 'state', 'unknown')
+    let l:id = get(l:e, 'id', '')
+    let l:version = get(l:e, 'version', '')
+    let l:root = get(l:e, 'root', '')
+    
+    let l:state_icon = l:state ==# 'activated' ? '*' : (l:state ==# 'disabled' ? 'x' : '-')
+    
+    call add(l:items, {
+          \ 'text': l:id,
+          \ 'state_icon': l:state_icon,
+          \ 'version': l:version,
+          \ 'state': l:state,
+          \ 'root': l:root,
+          \ })
+  endfor
   
   call myfinder#core#start(l:items, {
         \ 'open': function('s:ToggleExt'),
         \ 'delete': function('s:UninstallExt'),
         \ }, { 
         \ 'name': 'Extensions',
+        \ 'display': ['state_icon','text','version','root'],
+        \ 'columns_hl': ['', 'Type', 'Number', 'Directory'],
+        \ 'start_time': l:start_time,
         \ 'actions': {
         \   'toggle': function('s:ToggleExt'),
         \   'uninstall': function('s:UninstallExt'),
@@ -164,33 +185,8 @@ function! myfinder#coc#extensions() abort
         \   {'match': '^\*', 'link': 'String'},
         \   {'match': '^x', 'link': 'ErrorMsg'},
         \   {'match': '^-', 'link': 'Comment'},
-        \   {'match': '\%>2l\s\zs\S\+\ze\s', 'link': 'Type'},
-        \   {'match': '\%>2l\s\S\+\s\+\zs\S\+\ze', 'link': 'Number'},
-        \   {'match': '\%>2l\s\S\+\s\+\S\+\s\+\zs.*', 'link': 'Directory'},
         \ ],
         \ })
-endfunction
-
-function! s:BuildExtItems(exts) abort
-  let l:items = []
-  for l:e in a:exts
-    let l:state = get(l:e, 'state', 'unknown')
-    let l:id = get(l:e, 'id', '')
-    let l:version = get(l:e, 'version', '')
-    let l:root = get(l:e, 'root', '')
-    
-    let l:state_icon = l:state ==# 'activated' ? '*' : (l:state ==# 'disabled' ? 'x' : '-')
-    let l:display = printf('%s %-25s %-10s %s', l:state_icon, l:id, l:version, l:root)
-    
-    call add(l:items, {
-          \ 'text': l:id,
-          \ 'display': l:display,
-          \ 'id': l:id,
-          \ 'state': l:state,
-          \ 'root': l:root,
-          \ })
-  endfor
-  return l:items
 endfunction
 
 function! s:ToggleExt() dict
@@ -217,12 +213,13 @@ endfunction
 
 " --- Symbols (Document) ---
 function! myfinder#coc#symbols() abort
+  let l:start_time = reltime()
   if !exists('*CocAction')
     call myfinder#core#echo('coc.nvim not installed', 'error')
     return
   endif
   let l:symbols = CocAction('documentSymbols')
-  if empty(l:symbols)
+  if empty(l:symbols) || l:symbols == v:null
     call myfinder#core#echo('No symbols found', 'warn')
     return
   endif
@@ -234,40 +231,34 @@ function! myfinder#coc#symbols() abort
         \ 'preview': function('s:PreviewSymbol'),
         \ }, {
         \ 'name': 'Symbols',
+        \ 'start_time': l:start_time,
+        \ 'display': ['line', 'kind', 'text'],
+        \ 'columns_hl': ['Number', 'Type', 'Identifier'],
         \ 'preview_enabled': 1,
-        \ 'syntax': [
-        \   {'match': '\%>2l\s*\zs[^[ ]\+\ze', 'link': 'Identifier'},
-        \   {'match': '\[.*\]', 'link': 'Type'},
-        \ ],
         \ })
 endfunction
 
-function! s:ProcessSymbols(symbols, prefix, level) abort
+function! s:ProcessSymbols(symbols, p, level) abort
   let l:items = []
   for l:sym in a:symbols
-    let l:name = get(l:sym, 'name', '')
+    let l:name = get(l:sym, 'text', '') . a:p
     let l:kind = get(l:sym, 'kind', 'Unknown')
     let l:range = get(l:sym, 'range', {})
     let l:start = get(l:range, 'start', {})
     let l:lnum = get(l:start, 'line', 0) + 1
     let l:col = get(l:start, 'character', 0) + 1
     
-    let l:indent = repeat('  ', a:level)
-    let l:display = printf('%s%s [%s]', l:indent, l:name, l:kind)
-    
     let l:item = {
           \ 'text': l:name,
-          \ 'display': l:display,
           \ 'path': expand('%:p'),
           \ 'line': l:lnum,
           \ 'col': l:col,
           \ 'kind': l:kind,
-          \ 'prefix_len': len(l:display) - len(l:name),
           \ }
     call add(l:items, l:item)
     
     if has_key(l:sym, 'children') && !empty(l:sym.children)
-      call extend(l:items, s:ProcessSymbols(l:sym.children, a:prefix, a:level + 1))
+      call extend(l:items, s:ProcessSymbols(l:sym.children, l:name . '>', a:level + 1))
     endif
   endfor
   return l:items
@@ -300,8 +291,9 @@ function! s:PreviewSymbol() dict
   call win_execute(self.preview_winid, 'setlocal filetype=' . l:ft)
   
   let l:line = self.selected.line
+  call win_execute(self.preview_winid, 'call clearmatches()')
   call win_execute(self.preview_winid, 'call matchadd("Search", "\\%" . ' . l:line . ' . "l")')
-  call win_execute(self.preview_winid, 'normal! ' . l:line . 'Gzz')
+  call win_execute(self.preview_winid, 'normal! ' . l:line . 'G0zz')
 endfunction
 
 " --- Symbols (Workspace) ---

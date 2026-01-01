@@ -32,18 +32,13 @@ function! myfinder#files#start() abort
   endif
   
   if l:is_git
-    try
-      let l:files = fugitive#Execute(['ls-files','--exclude-standard','--cached','--others'])['stdout']
-    catch 
-      call myfinder#core#echo('Run Git Failed', 'error')
-      return 
-    endtry
+    let l:files = fugitive#Execute(['ls-files','--exclude-standard','--cached','--others'])['stdout']
   else
     let l:files = systemlist(l:cmd)
-  endif
-  if v:shell_error
-    call myfinder#core#echo('Failed to list files', 'error')
-    return
+    if v:shell_error
+      call myfinder#core#echo('Failed to list files', 'error')
+      return
+    endif
   endif
 
   let l:items = []
@@ -62,9 +57,8 @@ function! myfinder#files#start() abort
   
   call myfinder#core#start(l:items, {
         \ 'open': function('s:Open'),
-        \ 'open_tab': function('s:OpenTab'),
-        \ 'open_left': function('s:OpenLeft'),
-        \ 'open_right': function('s:OpenRight'),
+        \ 'open_with_new_tab': function('s:OpenTab'),
+        \ 'open_vertically': function('s:OpenRight'),
         \ 'preview': function('s:PreviewFile'),
         \ }, {
         \ 'name': l:name,
@@ -112,16 +106,6 @@ function! s:OpenTab() dict
     execute 'Gtabedit ' . fnameescape(self.selected.path)
   else
     execute 'tab split'
-    execute 'edit ' . fnameescape(self.selected.path)
-  endif
-endfunction
-
-function! s:OpenLeft() dict
-  call self.quit()
-  if exists(':Gvsplit')
-    execute 'leftabove Gvsplit ' . fnameescape(self.selected.path)
-  else
-    execute 'leftabove vsplit'
     execute 'edit ' . fnameescape(self.selected.path)
   endif
 endfunction
