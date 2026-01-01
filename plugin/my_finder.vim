@@ -16,11 +16,15 @@ command! FinderCocWorkspaceSymbols call myfinder#coc#workspace_symbols()
 command! FinderCtagsFile call myfinder#ctags#start('file')
 command! FinderCtagsWorkspace call myfinder#ctags#start('project')
 
+command! FinderRgAllLine call myfinder#rg#start('^')
+command! -nargs=* FinderRg call myfinder#rg#start(<q-args>)
+
 command! Finder call myfinder#master#start()
 
 nnoremap mm :call myfinder#mark#toggle()<CR>
 nnoremap mj :call myfinder#mark#next()<CR>
 nnoremap mk :call myfinder#mark#prev()<CR>
+" nnoremap gs :call myfinder#rg#start(expand('<cword>'))<CR>
 
 function! g:ReloadMyFinder() abort
   let l:plugin_root = fnamemodify(expand('<sfile>'), ':p:h:h')

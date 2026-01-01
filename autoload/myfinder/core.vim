@@ -52,15 +52,30 @@ endfunction
 function! s:CtxUpdateRes() dict
   " self is ctx
   let l:start = reltime()
-  if empty(self.filter)
-    let self.matches = self.items
-    if has_key(self, 'match_positions')
-      unlet self.match_positions
+  
+  " Dynamic search support
+  if get(self, 'dynamic_search', 0)
+    " If filter changed, invoke callback
+    let l:last = get(self, 'last_filter', '')
+    if self.filter !=# l:last
+      let self.last_filter = self.filter
+      if has_key(self, 'on_change')
+        call self.on_change(self, self.filter)
+      endif
     endif
+    " In dynamic mode, items are managed by external source
+    let self.matches = self.items
   else
-    let l:res = matchfuzzypos(self.items, self.filter, {'key': self.match_item})
-    let self.matches = l:res[0]
-    let self.match_positions = l:res[1]
+    if empty(self.filter)
+      let self.matches = self.items
+      if has_key(self, 'match_positions')
+        unlet self.match_positions
+      endif
+    else
+      let l:res = matchfuzzypos(self.items, self.filter, {'key': self.match_item})
+      let self.matches = l:res[0]
+      let self.match_positions = l:res[1]
+    endif
   endif
   
   let l:content = s:BuildContent(self)
@@ -294,6 +309,8 @@ function! myfinder#core#start(items, actions, ...) abort
   if l:ctx.preview_enabled
     call s:CreatePreviewWindow(l:ctx)
   endif
+  
+  return l:ctx
 endfunction
 
 function! s:CreatePreviewWindow(ctx) abort
@@ -457,7 +474,7 @@ function! s:ApplyHighLights(ctx) abort
   
   call win_execute(a:ctx.winid, 'highlight link FinderPrompt Title')
   call win_execute(a:ctx.winid, 'highlight link FinderSeparator Comment')
-  call win_execute(a:ctx.winid, 'highlight link FinderMatch Special')
+  call win_execute(a:ctx.winid, 'highlight link FinderMatch Search')
   call win_execute(a:ctx.winid, 'highlight link FinderCursor CursorIM')
   call win_execute(a:ctx.winid, 'highlight link FinderStatus Type')
   call win_execute(a:ctx.winid, 'highlight link FinderDir Directory')
@@ -532,25 +549,39 @@ function! s:ApplyHighLights(ctx) abort
   endif
   
   if empty(a:ctx.filter) || empty(a:ctx.matches)
-    return
+    if !get(a:ctx, 'dynamic_search', 0)
+      return
+    endif
   endif
   
-  if has_key(a:ctx, 'match_positions')
-    let l:match_positions = a:ctx.match_positions " list of list of byte indices
+  let l:max_hl = min([len(a:ctx.matches), a:ctx.render_limit])
+  let l:cmds = []
+  
+  for i in range(l:max_hl)
+    let l:item = a:ctx.matches[i]
+    let l:line_num = i + 3
+    let l:midx = index(a:ctx.display, get(a:ctx, 'match_item', ''))
+    let l:offset = 0
+    if l:midx != -1 && i < len(a:ctx.col_spans) && l:midx < len(a:ctx.col_spans[i])
+      let l:offset = a:ctx.col_spans[i][l:midx][0] - 1
+    endif
     
-    let l:max_hl = min([len(a:ctx.matches), a:ctx.render_limit])
-    let l:cmds = []
-    
-    for i in range(l:max_hl)
-      let l:pos_list = l:match_positions[i]
-      let l:item = a:ctx.matches[i]
-      let l:line_num = i + 3
-      let l:midx = index(a:ctx.display, a:ctx.match_item)
-      let l:offset = 0
-      if l:midx != -1 && i < len(a:ctx.col_spans) && l:midx < len(a:ctx.col_spans[i])
-        let l:offset = a:ctx.col_spans[i][l:midx][0] - 1
+    if has_key(l:item, 'highlights')
+      let l:hl_positions = []
+      for l:hl in l:item.highlights
+        " hl is [col, len]
+        " Ensure we don't go out of bounds or invalid values
+        if l:hl[0] > 0 && l:hl[1] > 0
+          call add(l:hl_positions, [l:line_num, l:hl[0] + l:offset, l:hl[1]])
+        endif
+      endfor
+      if !empty(l:hl_positions)
+        call add(l:cmds, "call matchaddpos('FinderMatch', " . string(l:hl_positions) . ")")
       endif
-      
+    endif
+
+    if has_key(a:ctx, 'match_positions')
+      let l:pos_list = a:ctx.match_positions[i]
       let l:hl_positions = []
       for l:byte_idx in l:pos_list
           call add(l:hl_positions, [l:line_num, l:byte_idx + 1 + l:offset, 1])
@@ -559,11 +590,11 @@ function! s:ApplyHighLights(ctx) abort
       if !empty(l:hl_positions)
          call add(l:cmds, "call matchaddpos('FinderMatch', " . string(l:hl_positions) . ")")
       endif
-    endfor
-    
-    if !empty(l:cmds)
-      call win_execute(a:ctx.winid, l:cmds)
     endif
+  endfor
+    
+  if !empty(l:cmds)
+    call win_execute(a:ctx.winid, l:cmds)
   endif
 endfunction
 
