@@ -92,8 +92,20 @@ function! s:PreviewTag() dict
     call popup_settext(self.preview_winid, ['No preview available'])
     return
   endif
-  
-  let l:lines = readfile(l:path, '', 500)
+
+  let l:cmd = get(self.selected, 'cmd', '')
+  let l:target_line = 0
+  if l:cmd =~# '^\d\+$'
+    let l:target_line = str2nr(l:cmd)
+  endif
+
+  " Read enough lines to show the target
+  let l:limit = 1000
+  if l:target_line > 0
+    let l:limit = max([1000, l:target_line + 50])
+  endif
+
+  let l:lines = readfile(l:path, '', l:limit)
   if empty(l:lines)
     let l:lines = ['']
   endif
@@ -102,11 +114,10 @@ function! s:PreviewTag() dict
   let l:ft = myfinder#core#GuessFiletype(l:path)
   call win_execute(self.preview_winid, 'setlocal filetype=' . l:ft)
   
-  let l:cmd = get(self.selected, 'cmd', '')
   call win_execute(self.preview_winid, 'call clearmatches()')
-  if l:cmd =~# '^\d\+$'
-    call win_execute(self.preview_winid, 'normal! ' . l:cmd . 'Gzz')
-    call win_execute(self.preview_winid, 'call matchadd("Search", "\\%" . l:cmd . "l")')
+  if l:target_line > 0
+    call win_execute(self.preview_winid, 'normal! ' . l:target_line . 'Gzz')
+    call win_execute(self.preview_winid, 'call matchadd("Search", "\\%" . l:target_line . "l")')
   else
     try
        call win_execute(self.preview_winid, l:cmd)

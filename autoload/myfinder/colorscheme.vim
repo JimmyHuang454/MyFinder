@@ -22,8 +22,16 @@ function! myfinder#colorscheme#start() abort
 endfunction
 
 function! s:Preview() dict
-  " execute 'colorscheme ' . self.selected.text
-  " redraw
+  try
+    execute 'colorscheme ' . self.selected.text
+  catch
+  endtry
+
+  if self.preview_winid != 0
+    call popup_settext(self.preview_winid, ['Previewing: ' . self.selected.text])
+  endif
+
+  redraw
 endfunction
 
 function! s:Open() dict
