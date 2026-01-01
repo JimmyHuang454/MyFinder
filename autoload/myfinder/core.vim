@@ -161,35 +161,95 @@ function! myfinder#core#start(items, actions, ...) abort
         \ "\<Tab>": 'select_action',
         \ }
   
+  " Default action shortcuts for menu (action -> char)
+  let l:ctx.action_shortcuts = {
+        \ 'open': 'o',
+        \ 'open_with_new_tab': 't',
+        \ 'open_horizontally': 'x',
+        \ 'open_vertically': ']',
+        \ 'delete': 'd',
+        \ 'preview_once': 'p',
+        \ 'copy_path': 'y',
+        \ }
+
   " Merge user defined mappings
   let l:user_mappings = get(g:, 'myfinder_mappings', {})
   let l:user_keys = {}
 
-  " Support both key:action and action:key formats
+  " Support:
+  " 1. key:action
+  " 2. action:key
+  " 3. action:[key, menu_shortcut]
   for [l:k, l:v] in items(l:user_mappings)
-    if has_key(l:ctx.default_actions, l:k) || has_key(l:ctx.actions, l:k)
-        " k is action, v is key
-        let l:user_keys[l:v] = l:k
+    let l:action = ''
+    let l:key = ''
+    let l:menu_shortcut = ''
+    
+    if type(l:v) == v:t_list && len(l:v) >= 2
+        " Case 3: action:[key, menu_shortcut]
+        let l:action = l:k
+        let l:key = l:v[0]
+        let l:menu_shortcut = l:v[1]
+    elseif has_key(l:ctx.default_actions, l:k) || has_key(l:ctx.actions, l:k)
+        " Case 2: action:key
+        let l:action = l:k
+        let l:key = l:v
     else
-        " k is key, v is action
-        let l:user_keys[l:k] = l:v
+        " Case 1: key:action
+        let l:key = l:k
+        let l:action = l:v
+    endif
+
+    if !empty(l:key) && !empty(l:action)
+        let l:user_keys[l:key] = l:action
+        if !empty(l:menu_shortcut)
+            let l:ctx.action_shortcuts[l:action] = l:menu_shortcut
+        endif
     endif
   endfor
   
+  " Check for duplicates in user_keys before merging (warn only)
+  for [l:k, l:v] in items(l:user_keys)
+    if has_key(l:default_keys, l:k)
+        " User is overriding default key
+    endif
+  endfor
+
   let l:ctx.key_map = extend(copy(l:default_keys), l:user_keys)
   
   " Merge finder specific mappings
   let l:finder_mappings = get(l:options, 'mappings', {})
   let l:finder_keys = {}
   for [l:k, l:v] in items(l:finder_mappings)
-    if has_key(l:ctx.default_actions, l:k) || has_key(l:ctx.actions, l:k)
-        " k is action, v is key
-        let l:finder_keys[l:v] = l:k
+    let l:action = ''
+    let l:key = ''
+    let l:menu_shortcut = ''
+
+    if type(l:v) == v:t_list && len(l:v) >= 2
+        " Case 3: action:[key, menu_shortcut]
+        let l:action = l:k
+        let l:key = l:v[0]
+        let l:menu_shortcut = l:v[1]
+    elseif has_key(l:ctx.default_actions, l:k) || has_key(l:ctx.actions, l:k)
+        " Case 2: action:key
+        let l:action = l:k
+        let l:key = l:v
     else
-        " k is key, v is action
-        let l:finder_keys[l:k] = l:v
+        " Case 1: key:action
+        let l:key = l:k
+        let l:action = l:v
+    endif
+    
+    if !empty(l:key) && !empty(l:action)
+        let l:finder_keys[l:key] = l:action
+        if !empty(l:menu_shortcut)
+            let l:ctx.action_shortcuts[l:action] = l:menu_shortcut
+        endif
     endif
   endfor
+  
+  " Extend with finder keys (overriding user keys if conflict, or we can choose policy)
+  " Usually finder specific mappings should have higher priority or just merge.
   call extend(l:ctx.key_map, l:finder_keys)
   
   " Reserve lines for Prompt (1), Separator (1)
@@ -877,16 +937,8 @@ endfunction
 function! s:ShowActions(ctx) abort
   let l:actions = []
   
-  " Map of action name to shortcut char
-  let l:shortcuts = {
-        \ 'open': 'o',
-        \ 'open_with_new_tab': 't',
-        \ 'open_horizontally': 'x',
-        \ 'open_vertically': ']',
-        \ 'delete': 'd',
-        \ 'preview_once': 'p',
-        \ 'copy_path': 'y',
-        \ }
+  " Use shortcuts from context (populated during initialization)
+  let l:shortcuts = a:ctx.action_shortcuts
   
   " Collect available actions
   let l:avail = keys(a:ctx.actions)
@@ -908,6 +960,17 @@ function! s:ShowActions(ctx) abort
     if has_key(a:ctx.actions, 'preview') && index(l:avail, 'preview_once') == -1
          call add(l:avail, 'preview_once')
     endif
+  endif
+  
+  " Filter out 'preview' if 'preview_once' is present or vice-versa to avoid duplication
+  " Usually 'preview' is the internal action name for automatic preview, 
+  " while 'preview_once' is the manual toggle.
+  " If 'preview' is in the list, it might be a custom action that does something different,
+  " but typically we only want one way to trigger preview in the menu.
+  " Let's remove 'preview' if 'preview_once' exists.
+  let l:p_idx = index(l:avail, 'preview')
+  if l:p_idx != -1 && index(l:avail, 'preview_once') != -1
+    call remove(l:avail, l:p_idx)
   endif
   
   " Sort actions by name length (shortest first)

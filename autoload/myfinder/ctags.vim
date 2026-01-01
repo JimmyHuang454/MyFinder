@@ -3,10 +3,8 @@
 function! myfinder#ctags#start() abort
   let l:start_time = reltime()
   let l:tagfiles = tagfiles()
-  if executable('ctags') && empty(l:tagfiles)
-    call myfinder#core#echo('Generating tags...', 'info')
-    call system('ctags -R --kinds-all=f .')
-    let l:tagfiles = tagfiles()
+  if empty(l:tagfiles)
+    let l:tagfiles = s:DoRefresh()
   endif
 
   if empty(l:tagfiles)
@@ -108,9 +106,18 @@ endfunction
 
 function! s:RefreshTags() dict
   call self.quit()
-  if executable('ctags')
-    call myfinder#core#echo('Updating tags...', 'info')
-    call system('ctags -R --kinds-all=f .')
-  endif
+  call s:DoRefresh()
   call myfinder#ctags#start()
+endfunction
+
+function! s:DoRefresh() abort
+  if !executable('ctags')
+    return
+  endif
+
+  call myfinder#core#echo('Generating tags...', 'info')
+  call system('ctags -R --kinds-all=f .')
+  let l:tagfiles = tagfiles()
+  call myfinder#core#echo('Generated new tags.', 'info')
+  return l:tagfiles
 endfunction
