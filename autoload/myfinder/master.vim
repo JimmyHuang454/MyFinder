@@ -19,6 +19,12 @@ function! myfinder#master#start() abort
         \ {'text': 'Files',   'cmd': 'FinderFiles',   'help': 'Find files (Smart Git detection)'},
         \ {'text': 'GitLog',  'cmd': 'FinderGitLog',  'help': 'Search git log'},
         \ {'text': 'Colorscheme',  'cmd': 'FinderColorscheme',  'help': 'Choose and preview color schemes'},
+        \ {'text': 'History', 'cmd': 'FinderHistory', 'help': 'Vim command history'},
+        \ {'text': 'CocDiagnostics', 'cmd': 'FinderCocDiagnostics', 'help': 'Coc diagnostics'},
+        \ {'text': 'CocCommands', 'cmd': 'FinderCocCommands', 'help': 'Coc commands'},
+        \ {'text': 'CocExtensions', 'cmd': 'FinderCocExtensions', 'help': 'Manage Coc extensions'},
+        \ {'text': 'CocSymbols', 'cmd': 'FinderCocSymbols', 'help': 'Coc document symbols'},
+        \ {'text': 'CocWorkspaceSymbols', 'cmd': 'FinderCocWorkspaceSymbols', 'help': 'Coc workspace symbols'},
         \ ]
   
   " Sort by usage count (descending)
@@ -28,7 +34,7 @@ function! myfinder#master#start() abort
   for l:def in l:defs
     let l:count = get(s:usage, l:def.cmd, 0)
     let l:count_str = l:count > 0 ? printf('[%d] ', l:count) : ''
-    let l:display = printf('%-13s %s %s', l:def.text, l:def.help, l:count_str)
+    let l:display = printf('%-16s %s %s', l:def.text, l:def.help, l:count_str)
     call add(l:items, {
           \ 'text': l:def.text,
           \ 'display': l:display,
@@ -44,8 +50,8 @@ function! myfinder#master#start() abort
         \{
         \ 'name': 'Master',
         \ 'syntax': [
-        \   {'match': '\%>2l\%>0v.*\%<14v', 'link': 'Type'},
-        \   {'match': '\%>2l\%>13v.*',       'link': 'Comment', 'contains': 'Number'},
+        \   {'match': '\%>2l\%>0v.*\%<17v', 'link': 'Type'},
+        \   {'match': '\%>2l\%>16v.*',       'link': 'Comment', 'contains': 'Number'},
         \   {'match': '\[\d\+\]\s*$',        'link': 'Number',  'contained': 1},
         \ ],
         \ 'start_time': l:start_time

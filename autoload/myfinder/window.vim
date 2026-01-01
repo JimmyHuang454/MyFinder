@@ -36,12 +36,16 @@ function! myfinder#window#start() abort
       let l:bufname = '[No Name]'
     endif
     let l:text = printf('%4d:%-3d %s', l:w.tabnr, l:w.winnr, l:bufname)
-    call add(l:items, {
+    let l:item = {
           \ 'text': l:text,
           \ 'display': l:text,
           \ 'target_winid': l:w.winid,
           \ 'lnum': 1,
-          \ })
+          \ }
+    if !empty(l:bufname) && l:bufname != '[No Name]'
+        let l:item.path = l:bufname
+    endif
+    call add(l:items, l:item)
   endfor
   
   call myfinder#core#start(l:items, {

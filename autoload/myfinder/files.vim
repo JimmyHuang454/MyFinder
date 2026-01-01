@@ -47,7 +47,12 @@ function! myfinder#files#start() abort
   endif
 
   let l:items = []
+
   for l:file in l:files
+    if l:file == ''
+      continue
+    endif
+    
     call add(l:items, {
           \ 'text': l:file,
           \ 'display': l:file,

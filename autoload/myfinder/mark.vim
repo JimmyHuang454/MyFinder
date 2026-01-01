@@ -245,105 +245,93 @@ function! myfinder#mark#add() abort
 endfunction
 
 function! myfinder#mark#start() abort
-  let l:start_time = reltime()
   let l:marks = s:LoadMarks()
-  
-  if empty(l:marks)
-    call myfinder#core#echo('No marks found. Use mm to add marks.', 'warn')
-    return
-  endif
-  
   let l:items = []
-  let l:idx = 0
   
   for l:mark in l:marks
-    let l:rel_path = fnamemodify(l:mark.file, ':~:.')
-    if l:rel_path[0] == '~' || l:rel_path[0] == '/'
-      let l:rel_path = fnamemodify(l:mark.file, ':~')
-    endif
-    
-    let l:display = printf('%s %4d: %s', l:rel_path, l:mark.line, l:mark.text)
+    let l:display = printf('%s:%d:%d  %s', fnamemodify(l:mark.file, ':t'), l:mark.line, l:mark.col, trim(l:mark.text))
     call add(l:items, {
-          \ 'text': l:display,
+          \ 'text': l:mark.text,
           \ 'display': l:display,
-          \ 'file': l:mark.file,
+          \ 'path': l:mark.file,
           \ 'line': l:mark.line,
           \ 'col': l:mark.col,
-          \ 'index': l:idx,
+          \ 'prefix_len': len(l:display) - len(trim(l:mark.text)),
           \ })
-    let l:idx += 1
   endfor
   
   call myfinder#core#start(l:items, {
-        \ 'delete': function('s:Delete'),
+        \ 'open': function('s:Open'),
         \ 'preview': function('s:MarkPreview'),
+        \ 'delete': function('s:DeleteMark'),
         \ }, {
         \ 'name': 'Marks',
-        \ 'start_time': l:start_time
+        \ 'name_color': {'guibg': '#98c379', 'ctermbg': 2},
+        \ 'preview_enabled': 1,
         \ })
 endfunction
 
-function! s:Delete() dict
-  " Load current marks
-  let l:marks = s:LoadMarks()
-  
-  " Remove the selected mark
-  call remove(l:marks, self.selected.index)
-  
-  " Save updated marks
-  call s:SaveMarks(l:marks)
-  
-  " Refresh the mark list
-  let l:new_items = []
-  let l:idx = 0
-  
-  for l:mark in l:marks
-    let l:rel_path = fnamemodify(l:mark.file, ':~:.')
-    if l:rel_path[0] == '~' || l:rel_path[0] == '/'
-      let l:rel_path = fnamemodify(l:mark.file, ':~')
-    endif
-    
-    let l:display = printf('%s:%d  %s', l:rel_path, l:mark.line, l:mark.text)
-    call add(l:new_items, {
-          \ 'text': l:display,
-          \ 'display': l:display,
-          \ 'file': l:mark.file,
-          \ 'line': l:mark.line,
-          \ 'col': l:mark.col,
-          \ 'index': l:idx,
-          \ })
-    let l:idx += 1
-  endfor
-  
-  " Update the context with new items
-  let self.items = l:new_items
-  let self.filter = ''
-  call self.update_res()
+function! s:Open() dict
+  call self.quit()
+  execute 'edit ' . fnameescape(self.selected.path)
+  call cursor(self.selected.line, self.selected.col)
+  normal! zz
 endfunction
 
 function! s:MarkPreview() dict
   if self.preview_winid == 0
     return
   endif
-  let l:path = get(self.selected, 'file', '')
+  let l:path = get(self.selected, 'path', '')
   if empty(l:path) || !filereadable(l:path)
     call popup_settext(self.preview_winid, ['No preview available'])
     return
   endif
-  let l:lnum = get(self.selected, 'line', 1)
-  let l:start = max([1, l:lnum - 20])
-  let l:end = l:lnum + 20
-  let l:head = readfile(l:path, '', l:end)
-  let l:lines = l:head[l:start - 1 :]
+  
+  let l:lines = readfile(l:path, '', 500)
   if empty(l:lines)
     let l:lines = ['']
   endif
   call popup_settext(self.preview_winid, l:lines)
+  
   let l:ft = myfinder#core#GuessFiletype(l:path)
   call win_execute(self.preview_winid, 'setlocal filetype=' . l:ft)
-  let l:rel = l:lnum - l:start + 1
-  let l:len = strdisplaywidth(get(l:lines, l:rel - 1, ''))
-  call win_execute(self.preview_winid, 'call clearmatches()')
-  call win_execute(self.preview_winid, 'highlight link FinderPreviewLine Search')
-  call win_execute(self.preview_winid, "call matchaddpos('FinderPreviewLine', [[" . l:rel . ", 1, " . l:len . "]])")
+  
+  let l:line = self.selected.line
+  call win_execute(self.preview_winid, 'call matchadd("Search", "\\%" . ' . l:line . ' . "l")')
+  call win_execute(self.preview_winid, 'normal! ' . l:line . 'Gzz')
+endfunction
+
+function! s:DeleteMark() dict
+  let l:path = self.selected.path
+  let l:line = self.selected.line
+  let l:marks = s:LoadMarks()
+  let l:new_marks = []
+  
+  for l:mark in l:marks
+    if l:mark.file ==# l:path && l:mark.line == l:line
+      continue
+    endif
+    call add(l:new_marks, l:mark)
+  endfor
+  
+  call s:SaveMarks(l:new_marks)
+  
+  " Refresh list
+  let l:items = []
+  for l:mark in l:new_marks
+    let l:display = printf('%s:%d:%d  %s', fnamemodify(l:mark.file, ':t'), l:mark.line, l:mark.col, trim(l:mark.text))
+    call add(l:items, {
+          \ 'text': l:mark.text,
+          \ 'display': l:display,
+          \ 'path': l:mark.file,
+          \ 'line': l:mark.line,
+          \ 'col': l:mark.col,
+          \ 'prefix_len': len(l:display) - len(trim(l:mark.text)),
+          \ })
+  endfor
+  
+  let self.items = l:items
+  let self.filter = ''
+  call self.update_res()
 endfunction

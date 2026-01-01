@@ -7,6 +7,12 @@ command! FinderMRU call myfinder#mru#start()
 command! FinderFiles call myfinder#files#start()
 command! FinderGitLog call myfinder#git#log()
 command! FinderColorscheme call myfinder#colorscheme#start()
+command! FinderHistory call myfinder#history#start()
+command! FinderCocDiagnostics call myfinder#coc#diagnostics()
+command! FinderCocCommands call myfinder#coc#commands()
+command! FinderCocExtensions call myfinder#coc#extensions()
+command! FinderCocSymbols call myfinder#coc#symbols()
+command! FinderCocWorkspaceSymbols call myfinder#coc#workspace_symbols()
 command! Finder call myfinder#master#start()
 
 nnoremap mm :call myfinder#mark#toggle()<CR>

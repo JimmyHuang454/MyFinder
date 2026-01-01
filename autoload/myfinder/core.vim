@@ -1,4 +1,5 @@
 let s:finders = {}
+let s:action_menus = {}
 
 if !exists('g:myfinder_preview_enabled')
   let g:myfinder_preview_enabled = 0
@@ -79,6 +80,19 @@ endfunction
 
 function! myfinder#core#start(items, actions, ...) abort
   let l:options = get(a:000, 0, {})
+  
+  " Inject icons if enabled
+  if get(g:, 'myfinder_enable_icon', 1)
+    for l:item in a:items
+      if has_key(l:item, 'path')
+         let l:icon = myfinder#icons#get(l:item.path)
+         let l:prefix = l:icon . ' '
+         let l:item.display = l:prefix . get(l:item, 'display', l:item.text)
+         let l:item.prefix_len = get(l:item, 'prefix_len', 0) + len(l:prefix)
+      endif
+    endfor
+  endif
+
   let l:preview_enabled = get(l:options, 'preview_enabled', g:myfinder_preview_enabled)
   let l:preview_layout = get(l:options, 'preview_layout', g:myfinder_preview_layout)
   let l:w = float2nr(&columns * 0.8)
@@ -127,6 +141,7 @@ function! myfinder#core#start(items, actions, ...) abort
         \     'select_up': function('s:SelectUp'),
         \     'select_down': function('s:SelectDown'),
         \     'preview_once': function('s:PreviewOnce'),
+        \     'copy_path': function('s:CopyPath'),
         \     },
         \ }
   
@@ -627,6 +642,21 @@ function! s:FinderFilter(winid, key) abort
     let l:action = 'preview_once'
   elseif a:key == "\<C-d>"
     let l:action = 'delete'
+  elseif a:key == "\<C-y>"
+    let l:action = 'copy_path'
+  elseif a:key == "\<Tab>"
+    let l:line = line('.', a:winid)
+    if l:line < 3
+      let l:line = 3
+    endif
+    let l:index = l:line - 3
+    if l:index < len(l:ctx.matches)
+      let l:ctx.selected = l:ctx.matches[l:index]
+    else
+      let l:ctx.selected = {}
+    endif
+    call s:ShowActions(l:ctx)
+    return 1
   elseif a:key =~ '^\p$'
     let l:ctx.filter .= a:key
     call l:ctx.update_res()
@@ -711,4 +741,156 @@ function! s:RestoreCursor(ctx) abort
   if has_key(a:ctx, 'save_guicursor')
     let &guicursor = a:ctx.save_guicursor
   endif
+endfunction
+
+function! s:CopyPath() dict
+  let l:path = ''
+  if has_key(self.selected, 'path')
+    let l:path = self.selected.path
+  elseif has_key(self.selected, 'file')
+    let l:path = self.selected.file
+  endif
+  
+  if !empty(l:path)
+    let l:abs_path = fnamemodify(l:path, ':p')
+    call setreg('+', l:abs_path)
+    call setreg('*', l:abs_path)
+    call myfinder#core#echo('Copied: ' . l:abs_path, 'success')
+  else
+    call myfinder#core#echo('No path to copy', 'warn')
+  endif
+endfunction
+
+function! s:ShowActions(ctx) abort
+  let l:actions = []
+  
+  " Map of action name to shortcut char
+  let l:shortcuts = {
+        \ 'open': 'o',
+        \ 'open_tab': 't',
+        \ 'open_left': '[',
+        \ 'open_right': ']',
+        \ 'delete': 'd',
+        \ 'preview_once': 'p',
+        \ 'copy_path': 'y',
+        \ }
+  
+  " Collect available actions
+  let l:avail = keys(a:ctx.actions)
+  
+  " Add defaults ONLY if they make sense for the current item
+  let l:has_path = has_key(a:ctx.selected, 'path') || has_key(a:ctx.selected, 'file')
+  
+  " File/Path related actions
+  if l:has_path
+    for l:a in ['open', 'open_tab', 'open_right', 'open_left', 'copy_path', 'preview_once']
+        if index(l:avail, l:a) == -1
+            call add(l:avail, l:a)
+        endif
+    endfor
+  else
+    " For non-path items, we might still support 'open' if the finder provides a custom 'open' callback
+    " But we should NOT blindly add tab/split/copy_path unless the finder explicitly supports them.
+    " However, 'preview_once' might be supported if 'preview' callback is present.
+    if has_key(a:ctx.actions, 'preview') && index(l:avail, 'preview_once') == -1
+         call add(l:avail, 'preview_once')
+    endif
+  endif
+  
+  " Sort actions by name length (shortest first)
+  call sort(l:avail, {a, b -> len(a) - len(b)})
+
+  let l:lines = []
+  let l:action_map = {}
+  
+  for l:act in l:avail
+    " Skip preview if already enabled
+    if l:act ==# 'preview_once' && get(a:ctx, 'preview_enabled', 0)
+        continue
+    endif
+
+    let l:key = get(l:shortcuts, l:act, '')
+    if empty(l:key)
+        continue
+    endif
+    call add(l:lines, printf('%s %s', l:key, l:act))
+    let l:action_map[l:key] = l:act
+  endfor
+  
+  if empty(l:lines)
+    return
+  endif
+
+  " Create a small popup in the center of the finder
+  let l:w = 30
+  let l:h = len(l:lines)
+  let l:row = a:ctx.height / 2 - l:h / 2
+  let l:col = a:ctx.width / 2 - l:w / 2
+  
+  " Absolute position based on finder window
+  let l:pos = popup_getpos(a:ctx.winid)
+  let l:line = l:pos.line + l:row
+  let l:col_abs = l:pos.col + l:col
+
+  let l:attr = {
+        \ 'line': l:line,
+        \ 'col': l:col_abs,
+        \ 'minwidth': l:w,
+        \ 'maxwidth': l:w,
+        \ 'minheight': l:h,
+        \ 'maxheight': l:h,
+        \ 'border': [1,1,1,1],
+        \ 'borderchars': g:myfinder_popup_borders,
+        \ 'padding': [0,0,0,0],
+        \ 'mapping': 0,
+        \ 'filter': function('s:ActionMenuFilter'),
+        \ 'zindex': 1000,
+        \ }
+  
+  let l:winid = popup_create(l:lines, l:attr)
+  
+  " Add highlighting for shortcuts
+  " Match the first character (shortcut) of the line
+  call win_execute(l:winid, 'syntax match MyFinderActionKey /^\s*\zs.\ze\s/ contained')
+  call win_execute(l:winid, 'syntax match MyFinderActionLine /.*/ contains=MyFinderActionKey')
+  call win_execute(l:winid, 'highlight default link MyFinderActionKey Special')
+
+  " Store context for the menu
+  let s:action_menus[l:winid] = {
+        \ 'winid': l:winid,
+        \ 'parent_ctx': a:ctx,
+        \ 'action_map': l:action_map,
+        \ }
+endfunction
+
+function! s:ActionMenuFilter(winid, key) abort
+  let l:ctx = get(s:action_menus, a:winid, {})
+  if empty(l:ctx)
+    call popup_close(a:winid)
+    return 0
+  endif
+
+  if a:key == "\<Esc>"
+    call popup_close(a:winid)
+    if has_key(s:action_menus, a:winid)
+      unlet s:action_menus[a:winid]
+    endif
+    return 1
+  endif
+  
+  if has_key(l:ctx.action_map, a:key)
+    let l:act = l:ctx.action_map[a:key]
+    call popup_close(a:winid)
+    if has_key(s:action_menus, a:winid)
+      unlet s:action_menus[a:winid]
+    endif
+    
+    " Execute action on parent
+    let l:pctx = l:ctx.parent_ctx
+    " We invoke HandleCallback.
+    call s:HandleCallback(l:pctx, a:key, l:act, l:pctx.selected)
+    return 1
+  endif
+  
+  return 1
 endfunction

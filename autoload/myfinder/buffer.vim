@@ -18,14 +18,20 @@ function! myfinder#buffer#start() abort
     
     let l:modified = l:buf.changed ? ' [+]' : ''
     let l:display = printf('%4d %s%s', l:buf.bufnr, l:name, l:modified)
-
-    call add(l:items, {
+    
+    let l:item = {
           \ 'text': l:name,
           \ 'display': l:display,
           \ 'bufnr': l:buf.bufnr,
           \ 'name': l:name,
           \ 'prefix_len': len(l:display) - len(l:name),
-          \ })
+          \ }
+    
+    if !empty(l:buf.name)
+       let l:item.path = l:buf.name
+    endif
+    
+    call add(l:items, l:item)
   endfor
   
   call myfinder#core#start(l:items, {
@@ -61,13 +67,17 @@ function! s:Delete() dict
     
     let l:modified = l:buf.changed ? ' [+]' : ''
     let l:display = printf('%3d %s%s', l:buf.bufnr, l:name, l:modified)
-    call add(l:new_items, {
+    let l:item = {
           \ 'text': l:name,
           \ 'display': l:display,
           \ 'bufnr': l:buf.bufnr,
           \ 'name': l:name,
           \ 'prefix_len': len(l:display) - len(l:name),
-          \ })
+          \ }
+    if !empty(l:buf.name)
+       let l:item.path = l:buf.name
+    endif
+    call add(l:new_items, l:item)
   endfor
   
   " Update the context with new items
@@ -85,11 +95,21 @@ function! s:BufferPreview() dict
     call popup_settext(self.preview_winid, ['No preview available'])
     return
   endif
-  let l:count = len(getbufline(l:bufnr, 1, '$'))
-  let l:end = min([l:count, 200])
-  let l:lines = getbufline(l:bufnr, 1, l:end)
+
+  let l:lines = []
+  if bufloaded(l:bufnr)
+    let l:count = len(getbufline(l:bufnr, 1, '$'))
+    let l:end = min([l:count, 200])
+    let l:lines = getbufline(l:bufnr, 1, l:end)
+  else
+    let l:path = bufname(l:bufnr)
+    if !empty(l:path) && filereadable(l:path)
+      let l:lines = readfile(l:path, '', 200)
+    endif
+  endif
+
   if empty(l:lines)
-    let l:lines = ['']
+    let l:lines = ['[Buffer not loaded and file not readable]']
   endif
   call popup_settext(self.preview_winid, l:lines)
   let l:ft = getbufvar(l:bufnr, '&filetype', 'text')
