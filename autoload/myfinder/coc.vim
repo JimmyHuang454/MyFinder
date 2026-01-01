@@ -110,11 +110,9 @@ function! myfinder#coc#commands() abort
         let l:id = l:cmd
         let l:title = ''
      endif
-     
-     let l:display = printf('%-30s %s', l:id, l:title)
      call add(l:items, {
         \ 'text': l:id,
-        \ 'display': l:display,
+        \ 'title': l:title,
         \ 'command': l:id,
         \ })
   endfor
@@ -123,10 +121,10 @@ function! myfinder#coc#commands() abort
         \ 'open': function('s:RunCommand'),
         \ }, {
         \ 'name': 'Commands',
-        \ 'syntax': [
-        \   {'match': '\%>2l^.\{-30\}', 'link': 'Type'},
-        \   {'match': '\%>2l\%>31v.*', 'link': 'Comment'},
-        \ ],
+        \ 'display': ['text', 'title'],
+        \ 'match_item': 'text',
+        \ 'columns_hl': ['Type', 'Comment'],
+        \ 'align_columns': 1,
         \ })
 endfunction
 

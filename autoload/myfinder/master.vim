@@ -4,10 +4,6 @@ if !exists('s:usage')
   let s:usage = {}
 endif
 
-function! s:DoNothing() dict
-  call myfinder#core#echo('Only Support Enter To Open.', 'info')
-endfunction
-
 function! myfinder#master#start() abort
   let l:start_time = reltime()
   let l:defs = [
@@ -26,7 +22,7 @@ function! myfinder#master#start() abort
         \ {'text': 'CocSymbols', 'cmd': 'FinderCocSymbols', 'help': 'Coc document symbols'},
         \ {'text': 'CocWorkspaceSymbols', 'cmd': 'FinderCocWorkspaceSymbols', 'help': 'Coc workspace symbols'},
         \ ]
-  
+
   " Sort by usage count (descending)
   call sort(l:defs, {a, b -> get(s:usage, b.cmd, 0) - get(s:usage, a.cmd, 0)})
   
@@ -34,26 +30,23 @@ function! myfinder#master#start() abort
   for l:def in l:defs
     let l:count = get(s:usage, l:def.cmd, 0)
     let l:count_str = l:count > 0 ? printf('[%d] ', l:count) : ''
-    let l:display = printf('%-16s %s %s', l:def.text, l:def.help, l:count_str)
     call add(l:items, {
           \ 'text': l:def.text,
-          \ 'display': l:display,
+          \ 'help': l:def.help,
+          \ 'count': l:count_str,
           \ 'cmd': l:def.cmd,
           \ })
   endfor
   
   call myfinder#core#start(l:items, {
         \'open': function('s:FinderOpen'),
-        \     'open_tab': function('s:DoNothing'),
-        \'open_left': function('s:DoNothing'),'open_right': function('s:DoNothing'),
         \}, 
         \{
         \ 'name': 'Master',
-        \ 'syntax': [
-        \   {'match': '\%>2l\%>0v.*\%<17v', 'link': 'Type'},
-        \   {'match': '\%>2l\%>16v.*',       'link': 'Comment', 'contains': 'Number'},
-        \   {'match': '\[\d\+\]\s*$',        'link': 'Number',  'contained': 1},
-        \ ],
+        \ 'display': ['text', 'help', 'count'],
+        \ 'match_item': 'text',
+        \ 'columns_hl': ['Type', 'Comment', 'Number'],
+        \ 'align_columns': 2,
         \ 'start_time': l:start_time
         \ })
 endfunction

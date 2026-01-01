@@ -58,7 +58,7 @@ function! s:CtxUpdateRes() dict
       unlet self.match_positions
     endif
   else
-    let l:res = matchfuzzypos(self.items, self.filter, {'key': 'text'})
+    let l:res = matchfuzzypos(self.items, self.filter, {'key': self.match_item})
     let self.matches = l:res[0]
     let self.match_positions = l:res[1]
   endif
@@ -80,18 +80,6 @@ endfunction
 
 function! myfinder#core#start(items, actions, ...) abort
   let l:options = get(a:000, 0, {})
-  
-  " Inject icons if enabled
-  if get(g:, 'myfinder_enable_icon', 1)
-    for l:item in a:items
-      if has_key(l:item, 'path')
-         let l:icon = myfinder#icons#get(l:item.path)
-         let l:prefix = l:icon . ' '
-         let l:item.display = l:prefix . get(l:item, 'display', l:item.text)
-         let l:item.prefix_len = get(l:item, 'prefix_len', 0) + len(l:prefix)
-      endif
-    endfor
-  endif
 
   let l:preview_enabled = get(l:options, 'preview_enabled', g:myfinder_preview_enabled)
   let l:preview_layout = get(l:options, 'preview_layout', g:myfinder_preview_layout)
@@ -111,6 +99,10 @@ function! myfinder#core#start(items, actions, ...) abort
         \ 'name_color': get(l:options, 'name_color', {}),
         \ 'filetype': get(l:options, 'filetype', ''),
         \ 'syntax': get(l:options, 'syntax', []),
+        \ 'display': get(l:options, 'display', ['text']),
+        \ 'match_item': get(l:options, 'match_item', 'text'),
+        \ 'columns_hl': get(l:options, 'columns_hl', []),
+        \ 'align_columns': get(l:options, 'align_columns', len(get(l:options, 'display', ['text']))),
         \ 'status': get(l:options, 'status', ''),
         \ 'filter': '',
         \ 'winid': 0,
@@ -147,6 +139,7 @@ function! myfinder#core#start(items, actions, ...) abort
   
   " Reserve lines for Prompt (1), Separator (1)
   let l:ctx.render_limit = l:ctx.height - 2
+  let l:ctx.col_spans = []
         
   call s:HideCursor(l:ctx)
         
@@ -158,6 +151,7 @@ function! myfinder#core#start(items, actions, ...) abort
         \ 'maxwidth': l:ctx.width,
         \ 'minheight': l:ctx.height,
         \ 'maxheight': l:ctx.height,
+        \ 'highlight': 'Normal',
         \ 'border': [1,1,1,1],
         \ 'borderchars': g:myfinder_popup_borders,
         \ 'borderhighlight': ['FinderSeparator'],
@@ -222,6 +216,7 @@ function! s:CreatePreviewWindow(ctx) abort
         \ 'maxwidth': l:preview_w,
         \ 'minheight': l:preview_h,
         \ 'maxheight': l:preview_h,
+        \ 'highlight': 'Normal',
         \ 'border': [1,1,1,1],
         \ 'borderchars': g:myfinder_popup_borders,
         \ 'borderhighlight': ['FinderSeparator'],
@@ -273,11 +268,58 @@ function! s:BuildContent(ctx) abort
   
   let l:list_content = []
   let l:limit = min([len(a:ctx.matches), a:ctx.render_limit])
+  let l:cols = a:ctx.display
+  let l:cnum = len(l:cols)
+  let l:align_cnt = a:ctx.align_columns
+  if l:align_cnt > l:cnum
+    let l:align_cnt = l:cnum
+  endif
+  let l:widths = repeat([0], l:align_cnt)
   for i in range(l:limit)
     let l:item = a:ctx.matches[i]
-    call add(l:list_content, has_key(l:item, 'display') ? l:item.display : l:item.text)
+    for j in range(l:align_cnt)
+      let l:val = get(l:item, l:cols[j], '')
+      let l:w = strdisplaywidth(l:val)
+      if l:w > l:widths[j]
+        let l:widths[j] = l:w
+      endif
+    endfor
   endfor
-  
+  let a:ctx.col_spans = []
+  for i in range(l:limit)
+    let l:item = a:ctx.matches[i]
+    let l:row_spans = []
+    let l:line = ''
+    let l:byte_pos = 1
+    for j in range(l:cnum)
+      let l:val = get(l:item, l:cols[j], '')
+      let l:textw = strdisplaywidth(l:val)
+      let l:pad = 0
+      if j < l:align_cnt
+        let l:pad = l:widths[j] - l:textw
+      endif
+      let l:seg = l:val
+      let l:text_byte_start = l:byte_pos
+      if j == 0 && get(g:, 'myfinder_enable_icon', 1) && has_key(l:item, 'path')
+        let l:ic = myfinder#icons#get(l:item.path)
+        if !empty(l:ic)
+          let l:seg = l:ic . ' ' . l:seg
+          let l:text_byte_start = l:byte_pos + strlen(l:ic . ' ')
+        endif
+      endif
+      let l:seg_padded = l:seg . repeat(' ', l:pad)
+      call add(l:row_spans, [l:text_byte_start, strlen(l:val)])
+      let l:line .= l:seg_padded
+      if j < l:cnum - 1
+        let l:line .= '  '
+        let l:byte_pos += strlen(l:seg_padded) + 2
+      else
+        let l:byte_pos += strlen(l:seg_padded)
+      endif
+    endfor
+    call add(a:ctx.col_spans, l:row_spans)
+    call add(l:list_content, l:line)
+  endfor
   if empty(l:list_content)
     call add(l:content, 'No matches')
   else
@@ -292,6 +334,7 @@ function! s:ApplyHighLights(ctx) abort
   
   if !empty(a:ctx.filetype)
     call win_execute(a:ctx.winid, 'setlocal filetype=' . a:ctx.filetype)
+    call win_execute(a:ctx.winid, 'setlocal nonumber norelativenumber signcolumn=no foldcolumn=0 nofoldenable nolist nowrap')
   else
     call win_execute(a:ctx.winid, 'syntax clear')
   endif
@@ -307,6 +350,8 @@ function! s:ApplyHighLights(ctx) abort
   call win_execute(a:ctx.winid, 'highlight link FinderStatusAlt WarningMsg')
   call win_execute(a:ctx.winid, 'highlight link FinderNone ErrorMsg')
   call win_execute(a:ctx.winid, 'highlight link FinderHash Identifier')
+
+  call win_execute(a:ctx.winid, 'highlight link PopupSelected CursorLine')
   
   " Apply custom or default finder name color
   let l:default_color = {'ctermbg': 6, 'ctermfg': 0, 'guibg': '#56b6c2', 'guifg': '#282c34'}
@@ -348,6 +393,28 @@ function! s:ApplyHighLights(ctx) abort
     endif
   endfor
   
+  if !empty(get(a:ctx, 'columns_hl', [])) && !empty(a:ctx.matches)
+    let l:max_hl_cols = min([len(a:ctx.matches), a:ctx.render_limit])
+    let l:col_cmds = []
+    for i in range(l:max_hl_cols)
+      for j in range(len(a:ctx.columns_hl))
+        let l:grp = a:ctx.columns_hl[j]
+        if !empty(l:grp)
+          if i < len(a:ctx.col_spans) && j < len(a:ctx.col_spans[i])
+            let l:start = a:ctx.col_spans[i][j][0]
+            let l:len = a:ctx.col_spans[i][j][1]
+            if l:len > 0
+              call add(l:col_cmds, "call matchaddpos('" . l:grp . "', " . string([[i + 3, l:start, l:len]]) . ")")
+            endif
+          endif
+        endif
+      endfor
+    endfor
+    if !empty(l:col_cmds)
+      call win_execute(a:ctx.winid, l:col_cmds)
+    endif
+  endif
+  
   if empty(a:ctx.filter) || empty(a:ctx.matches)
     return
   endif
@@ -362,7 +429,11 @@ function! s:ApplyHighLights(ctx) abort
       let l:pos_list = l:match_positions[i]
       let l:item = a:ctx.matches[i]
       let l:line_num = i + 3
-      let l:offset = has_key(l:item, 'prefix_len') ? l:item.prefix_len : 0
+      let l:midx = index(a:ctx.display, a:ctx.match_item)
+      let l:offset = 0
+      if l:midx != -1 && i < len(a:ctx.col_spans) && l:midx < len(a:ctx.col_spans[i])
+        let l:offset = a:ctx.col_spans[i][l:midx][0] - 1
+      endif
       
       let l:hl_positions = []
       for l:byte_idx in l:pos_list
@@ -599,6 +670,15 @@ function! s:SelectDown() dict
   let l:max_line = min([len(self.matches), self.render_limit]) + 2
   if l:lnum < l:max_line
     call win_execute(self.winid, "normal! j")
+    " Check if we scrolled past the first visible line (which is prompt)
+    " We want to keep lines 1 and 2 (prompt and separator) visible
+    let l:topline = getwininfo(self.winid)[0].topline
+    if l:topline > 1
+        " Scroll back up to keep prompt visible
+        call win_execute(self.winid, "normal! " . l:topline . "G2kzt")
+        " Restore cursor position
+        call win_execute(self.winid, "normal! " . (l:lnum + 1) . "G")
+    endif
     call s:TriggerPreview(self, 0)
   endif
 endfunction

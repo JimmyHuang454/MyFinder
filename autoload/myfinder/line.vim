@@ -7,13 +7,10 @@ function! myfinder#line#start() abort
   
   " Prepare items: {text, display, lnum, winid}
   for i in range(len(l:lines))
-    let l:prefix = printf('%4s ', i + 1)
     call add(l:items, {
           \ 'text': l:lines[i],
-          \ 'display': l:prefix . l:lines[i],
           \ 'lnum': i + 1,
           \ 'winid': l:winid,
-          \ 'prefix_len': len(l:prefix)
           \ })
   endfor
   
@@ -25,6 +22,7 @@ function! myfinder#line#start() abort
         \ 'preview': function('s:LineFinderPreview'),
         \ }, {
         \ 'name': 'Lines',
+        \ 'display': ['lnum', 'text'],
         \ 'name_color': {'guibg': '#d19a66', 'ctermbg': 3},
         \ 'filetype': &filetype,
         \ 'start_time': l:start_time
@@ -56,13 +54,14 @@ function! s:LineFinderPreview() dict
   endif
   call popup_settext(self.preview_winid, l:lines)
   let l:ft = getbufvar(l:bufnr, '&filetype', 'text')
-  call win_execute(self.preview_winid, 'setlocal filetype=' . l:ft)
+  call win_execute(self.preview_winid, 'setlocal filetype=' . l:ft . ' nonumber norelativenumber signcolumn=no foldcolumn=0 nofoldenable nolist')
   " Highlight the target line within preview
   let l:rel = l:lnum - l:start + 1
-  let l:len = strdisplaywidth(get(l:lines, l:rel - 1, ''))
+  let l:len = strlen(get(l:lines, l:rel - 1, ''))
   call win_execute(self.preview_winid, 'call clearmatches()')
   call win_execute(self.preview_winid, 'highlight link FinderPreviewLine Search')
   call win_execute(self.preview_winid, "call matchaddpos('FinderPreviewLine', [[" . l:rel . ", 1, " . l:len . "]])")
+  call win_execute(self.preview_winid, 'normal! ' . l:rel . 'G0zz')
 endfunction
 
 function! s:LineFinderOpenTab() dict
