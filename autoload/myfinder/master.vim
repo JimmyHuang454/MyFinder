@@ -21,7 +21,8 @@ function! myfinder#master#start() abort
         \ {'text': 'CocExtensions', 'cmd': 'FinderCocExtensions', 'help': 'Manage Coc extensions'},
         \ {'text': 'CocSymbols', 'cmd': 'FinderCocSymbols', 'help': 'Coc document symbols'},
         \ {'text': 'CocWorkspaceSymbols', 'cmd': 'FinderCocWorkspaceSymbols', 'help': 'Coc workspace symbols'},
-        \ {'text': 'Ctags', 'cmd': 'FinderCtags', 'help': 'Project Ctags'},
+        \ {'text': 'CtagsFile', 'cmd': 'FinderCtagsFile', 'help': 'File Ctags'},
+        \ {'text': 'CtagsWorkspace', 'cmd': 'FinderCtagsWorkspace', 'help': 'Workspace Ctags'},
         \ ]
 
   " Sort by usage count (descending)

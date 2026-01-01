@@ -2,6 +2,8 @@
 
 # Starts Vim with the current directory added to runtime path.
 # Also adds a mapping <leader>r to reload the plugin.
+c:
+	ctags -R --kinds-vim=f .
 test:
 	vim -c "set rtp+=." \
 	    -c "source plugin/line_finder.vim" \

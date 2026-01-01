@@ -128,7 +128,7 @@ function! myfinder#core#start(items, actions, ...) abort
         \     'open_horizontally': function('s:GenericOpenHorizontally'),
         \     'open_vertically': function('s:GenericOpenVertically'),
         \     'bs': function('s:BS'),
-        \     'clear': function('s:CLEAR'),
+        \     'clear': function('s:Clear'),
         \     'delete_a_word': function('s:DeleteAWord'),
         \     'select_up': function('s:SelectUp'),
         \     'select_down': function('s:SelectDown'),
@@ -686,7 +686,7 @@ function! s:BS() dict
   call self.update_res()
 endfunction
 
-function! s:CLEAR() dict
+function! s:Clear() dict
   let self.filter = ''
   call self.update_res()
 endfunction

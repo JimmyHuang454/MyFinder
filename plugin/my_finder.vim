@@ -13,7 +13,9 @@ command! FinderCocCommands call myfinder#coc#commands()
 command! FinderCocExtensions call myfinder#coc#extensions()
 command! FinderCocSymbols call myfinder#coc#symbols()
 command! FinderCocWorkspaceSymbols call myfinder#coc#workspace_symbols()
-command! FinderCtags call myfinder#ctags#start()
+command! FinderCtagsFile call myfinder#ctags#start('file')
+command! FinderCtagsWorkspace call myfinder#ctags#start('project')
+
 command! Finder call myfinder#master#start()
 
 nnoremap mm :call myfinder#mark#toggle()<CR>

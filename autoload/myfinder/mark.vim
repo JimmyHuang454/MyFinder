@@ -245,18 +245,17 @@ function! myfinder#mark#add() abort
 endfunction
 
 function! myfinder#mark#start() abort
+  let l:start_time = reltime()
   let l:marks = s:LoadMarks()
   let l:items = []
   
   for l:mark in l:marks
-    let l:display = printf('%s:%d:%d  %s', fnamemodify(l:mark.file, ':t'), l:mark.line, l:mark.col, trim(l:mark.text))
     call add(l:items, {
-          \ 'text': l:mark.text,
-          \ 'display': l:display,
+          \ 'text': trim(l:mark.text),
+          \ 'p': fnamemodify(l:mark.file, ':t'),
           \ 'path': l:mark.file,
           \ 'line': l:mark.line,
           \ 'col': l:mark.col,
-          \ 'prefix_len': len(l:display) - len(trim(l:mark.text)),
           \ })
   endfor
   
@@ -266,8 +265,10 @@ function! myfinder#mark#start() abort
         \ 'delete': function('s:DeleteMark'),
         \ }, {
         \ 'name': 'Marks',
+        \ 'display': ['p','line','text'],
+        \ 'columns_hl': ['Number','Type','Identifier'],
         \ 'name_color': {'guibg': '#98c379', 'ctermbg': 2},
-        \ 'preview_enabled': 1,
+        \ 'start_time': l:start_time,
         \ })
 endfunction
 
