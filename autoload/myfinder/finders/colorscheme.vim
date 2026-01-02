@@ -1,6 +1,6 @@
 let s:original_colorscheme = ''
 
-function! myfinder#colorscheme#start() abort
+function! myfinder#finders#colorscheme#start() abort
   let l:start_time = reltime()
   let s:original_colorscheme = get(g:, 'colors_name', 'default')
   
@@ -16,6 +16,7 @@ function! myfinder#colorscheme#start() abort
         \ 'esc': function('s:Esc'),
         \ }, {
         \ 'name': 'Colorscheme',
+        \ 'preview_enabled': 1,
         \ 'name_color': {'guibg': '#e5c07b', 'ctermbg': 3},
         \ 'start_time': l:start_time
         \ })
@@ -30,14 +31,13 @@ function! s:Preview() dict
   if self.preview_winid != 0
     call popup_settext(self.preview_winid, ['Previewing: ' . self.selected.text])
   endif
-
-  redraw
+  redraw!
 endfunction
 
 function! s:Open() dict
   call self.quit()
   execute 'colorscheme ' . self.selected.text
-  call myfinder#core#echo('Colorscheme set to ' . self.selected.text, 'success')
+  call myfinder#utils#echo('Colorscheme set to ' . self.selected.text, 'success')
 endfunction
 
 function! s:Esc() dict

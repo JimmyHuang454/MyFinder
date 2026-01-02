@@ -1,22 +1,4 @@
-function! s:OpenTab() dict
-  call self.quit()
-  let l:bufnr = winbufnr(self.selected.target_winid)
-  if l:bufnr != -1
-    execute 'tab split'
-    execute 'buffer ' . l:bufnr
-  endif
-endfunction
-
-function! s:OpenRight() dict
-  call self.quit()
-  let l:bufnr = winbufnr(self.selected.target_winid)
-  if l:bufnr != -1
-    execute 'rightbelow vertical split'
-    execute 'buffer ' . l:bufnr
-  endif
-endfunction
-
-function! myfinder#window#start() abort
+function! myfinder#finders#window#start() abort
   let l:start_time = reltime()
   let l:wins = getwininfo()
   let l:items = []
@@ -26,22 +8,25 @@ function! myfinder#window#start() abort
     if empty(l:bufname)
       let l:bufname = '[No Name]'
     endif
-    let l:text = printf('%3d:%-3d %s', l:w.tabnr, l:w.winnr, l:bufname)
+    let l:text = printf('%3d:%-3d %s:%d:%d', l:w.tabnr, l:w.winnr, l:bufname, l:w.winrow, l:w.wincol)
     let l:item = {
           \ 'text': l:text,
           \ 'display': l:text,
           \ 'target_winid': l:w.winid,
-          \ 'lnum': 1,
+          \ 'lnum': l:w.winrow,
+          \ 'col': l:w.wincol,
           \ }
     if !empty(l:bufname) && l:bufname != '[No Name]'
         let l:item.path = l:bufname
     endif
+
+    call myfinder#utils#setFiletype(l:item, l:bufname)
     call add(l:items, l:item)
   endfor
   
   call myfinder#core#start(l:items, {
-        \ 'open_with_new_tab': function('s:OpenTab'),
-        \ 'open_vertically': function('s:OpenRight'),
+        \ 'preview': function('myfinder#actions#preview'),
+        \ 'open': function('myfinder#actions#open'),
         \ }, {
         \ 'name': 'Windows',
         \ 'name_color': {'guibg': '#e06c75', 'ctermbg': 1},

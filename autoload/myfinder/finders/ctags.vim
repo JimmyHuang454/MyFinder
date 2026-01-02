@@ -1,6 +1,6 @@
 " autoload/myfinder/ctags.vim
 
-function! myfinder#ctags#start(...) abort
+function! myfinder#finders#ctags#start(...) abort
   let l:scope = get(a:, 1, 'file')
   let l:start_time = reltime()
 
@@ -20,7 +20,7 @@ function! myfinder#ctags#start(...) abort
   endtry
 
   if empty(l:tags)
-    call myfinder#core#echo('No tags found', 'warn')
+    call myfinder#utils#echo('No tags found', 'warn')
     return
   endif
 
@@ -33,26 +33,36 @@ function! myfinder#ctags#start(...) abort
     
     let l:file_display = fnamemodify(l:file, ':t')
     
-    call add(l:items, {
+    let l:lnum = 0
+    if l:cmd =~# '^\d\+$'
+      let l:lnum = str2nr(l:cmd)
+    endif
+    
+    let l:item = {
         \ 'text': l:name,
         \ 'kind': l:kind,
         \ 'file_display': l:file_display,
         \ 'path': l:file,
+        \ 'file_path': l:file,
         \ 'cmd': l:cmd,
-        \ 'line': l:cmd,
-        \ })
+        \ 'lnum': l:lnum,
+        \ }
+    call myfinder#utils#setFiletype(l:item, l:file)
+    call add(l:items, l:item)
   endfor
 
-  let l:display = ['line', 'kind', 'text']
+  let l:display = ['lnum', 'kind', 'text']
 
+  let l:preview_enabled = 1
   if l:scope == 'project'
     call add(l:display, 'file_display')
+    let l:preview_enabled = 0
   endif
 
   call myfinder#core#start(l:items, {
-        \ 'open': function('s:JumpToTag'),
-        \ 'preview': function('s:PreviewTag'),
-        \ 'refresh': function('s:RefreshTags'),
+        \ 'open': function('myfinder#actions#open'),
+        \ 'preview': function('myfinder#actions#preview'),
+        \ 'refresh': function('s:RefreshTags')
         \ }, {
         \ 'name': 'Ctags (' . l:scope . ')',
         \ 'scope': l:scope,
@@ -61,86 +71,23 @@ function! myfinder#ctags#start(...) abort
         \ 'match_item': 'text',
         \ 'columns_hl': ['Identifier', 'Type', 'Number', 'Comment'],
         \ 'start_time': l:start_time,
-        \ 'preview_enabled': 1,
+        \ 'preview_enabled': l:preview_enabled,
         \ })
-endfunction
-
-function! s:JumpToTag() dict
-  call self.quit()
-  let l:file = self.selected.path
-  let l:cmd = self.selected.cmd
-  
-  execute 'edit ' . fnameescape(l:file)
-  
-  if l:cmd =~# '^\d\+$'
-    execute l:cmd
-  else
-    try
-        execute l:cmd
-    catch
-    endtry
-  endif
-  normal! zz
-endfunction
-
-function! s:PreviewTag() dict
-  if self.preview_winid == 0
-    return
-  endif
-  let l:path = get(self.selected, 'path', '')
-  if empty(l:path) || !filereadable(l:path)
-    call popup_settext(self.preview_winid, ['No preview available'])
-    return
-  endif
-
-  let l:cmd = get(self.selected, 'cmd', '')
-  let l:target_line = 0
-  if l:cmd =~# '^\d\+$'
-    let l:target_line = str2nr(l:cmd)
-  endif
-
-  " Read enough lines to show the target
-  let l:limit = 1000
-  if l:target_line > 0
-    let l:limit = max([1000, l:target_line + 50])
-  endif
-
-  let l:lines = readfile(l:path, '', l:limit)
-  if empty(l:lines)
-    let l:lines = ['']
-  endif
-  call popup_settext(self.preview_winid, l:lines)
-  
-  let l:ft = myfinder#core#GuessFiletype(l:path)
-  call win_execute(self.preview_winid, 'setlocal filetype=' . l:ft)
-  
-  call win_execute(self.preview_winid, 'call clearmatches()')
-  if l:target_line > 0
-    call win_execute(self.preview_winid, 'normal! ' . l:target_line . 'Gzz')
-    call win_execute(self.preview_winid, 'call matchadd("Search", "\\%" . l:target_line . "l")')
-  else
-    try
-       call win_execute(self.preview_winid, l:cmd)
-       call win_execute(self.preview_winid, 'normal! zz')
-       call win_execute(self.preview_winid, 'call matchadd("Search", "\\%" . line(".") . "l")')
-    catch
-    endtry
-  endif
 endfunction
 
 function! s:RefreshTags() dict
   call self.quit()
   let l:scope = get(self, 'scope', 'file')
-  call myfinder#ctags#start(l:scope)
+  call myfinder#finders#ctags#start(l:scope)
 endfunction
 
 function! s:GenerateTags(scope) abort
   if !executable('ctags')
-    call myfinder#core#echo('ctags not found', 'error')
+    call myfinder#utils#echo('ctags not found', 'error')
     return ''
   endif
 
-  call myfinder#core#echo('Generating tags (' . a:scope . ')...', 'info')
+  call myfinder#utils#echo('Generating tags (' . a:scope . ')...', 'info')
 
   let l:ctags_options = {
         \ 'aspvbs': '--asp-kinds=f',
@@ -184,7 +131,7 @@ function! s:GenerateTags(scope) abort
     " current file
     let l:file = expand('%:p')
     if empty(l:file)
-      call myfinder#core#echo('No file to tag', 'warn')
+      call myfinder#utils#echo('No file to tag', 'warn')
       return ''
     endif
     let l:cmd = 'ctags --excmd=number -f ' . fnameescape(l:temp_file) . (l:extra_cmd == '' ? '' : ' ' . l:extra_cmd) . ' ' . fnameescape(l:file)
@@ -193,7 +140,7 @@ function! s:GenerateTags(scope) abort
   call system(l:cmd)
 
   if v:shell_error
-    call myfinder#core#echo('ctags failed', 'error')
+    call myfinder#utils#echo('ctags failed', 'error')
     return ''
   endif
 

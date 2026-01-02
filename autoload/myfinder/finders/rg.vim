@@ -1,7 +1,7 @@
-function! myfinder#rg#start(query) abort
+function! myfinder#finders#rg#start(query) abort
   let l:start_time = reltime()
   if !executable('rg')
-    call myfinder#core#echo('ripgrep (rg) is not installed', 'error')
+    call myfinder#utils#echo('ripgrep (rg) is not installed', 'error')
     return
   endif
 
@@ -10,11 +10,12 @@ function! myfinder#rg#start(query) abort
   let l:items = []
   
   let l:ctx = myfinder#core#start(l:items, {
-        \ 'open': function('s:Open'),
-        \ 'open_with_new_tab': function('s:OpenTab'),
-        \ 'open_vertically': function('s:OpenRight'),
-        \ 'preview': function('s:Preview'),
         \ 'on_change': function('s:OnInputChange'),
+        \ 'preview': function('myfinder#actions#preview'),
+        \ 'open': function('myfinder#actions#open'),
+        \ 'open_with_new_tab': function('myfinder#actions#open_with_new_tab'),
+        \ 'open_vertically': function('myfinder#actions#open_vertically'),
+        \ 'open_horizontally': function('myfinder#actions#open_horizontally'),
         \ }, {
         \ 'name': 'Rg ' . a:query,
         \ 'name_color': {'guibg': '#e06c75', 'ctermbg': 1},
@@ -186,59 +187,4 @@ function! s:Update(ctx) abort
   
   " Refresh UI
   call a:ctx.update_res()
-endfunction
-
-function! s:Open() dict
-  call self.quit()
-  execute 'edit ' . fnameescape(self.selected.path)
-  call cursor(self.selected.line, self.selected.col)
-  normal! zz
-endfunction
-
-function! s:OpenTab() dict
-  call self.quit()
-  execute 'tab split'
-  execute 'edit ' . fnameescape(self.selected.path)
-  call cursor(self.selected.line, self.selected.col)
-  normal! zz
-endfunction
-
-function! s:OpenRight() dict
-  call self.quit()
-  execute 'rightbelow vertical split'
-  execute 'edit ' . fnameescape(self.selected.path)
-  call cursor(self.selected.line, self.selected.col)
-  normal! zz
-endfunction
-
-function! s:Preview() dict
-  if self.preview_winid == 0
-    return
-  endif
-  
-  let l:path = get(self.selected, 'path', '')
-  if empty(l:path) || !filereadable(l:path)
-    call popup_settext(self.preview_winid, ['No preview available'])
-    return
-  endif
-  
-  let l:lines = readfile(l:path, '', 500)
-  if empty(l:lines)
-    let l:lines = ['']
-  endif
-  call popup_settext(self.preview_winid, l:lines)
-  
-  if exists('*myfinder#core#GuessFiletype')
-     let l:ft = myfinder#core#GuessFiletype(l:path)
-     call win_execute(self.preview_winid, 'setfiletype ' . l:ft)
-  endif
-
-  " Highlight the target line within preview
-  let l:line = self.selected.line
-  call win_execute(self.preview_winid, [
-        \ 'call clearmatches()',
-        \ 'highlight link FinderPreviewLine Search',
-        \ "call matchadd('FinderPreviewLine', '\\%" . l:line . "l')",
-        \ 'normal! ' . l:line . 'G0zz',
-        \ ])
 endfunction

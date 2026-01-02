@@ -1,52 +1,28 @@
-let s:finders = {}
-let s:action_menus = {}
-
-if !exists('g:myfinder_preview_enabled')
-  let g:myfinder_preview_enabled = 0
-endif
 if !exists('g:myfinder_preview_delay')
-  let g:myfinder_preview_delay = 200
-endif
-if !exists('g:myfinder_preview_layout')
-  let g:myfinder_preview_layout = 'column'
+  let g:myfinder_preview_delay = 300
 endif
 
 if !exists('g:myfinder_popup_borders')
   let g:myfinder_popup_borders = ["─","│","─","│","╭","╮","╯","╰"]
 endif
 
-function! myfinder#core#echo(msg, ...) abort
-  let l:type = get(a:000, 0, 'info')
-  let l:hl = get({'info': 'MoreMsg', 'success': 'MoreMsg', 'warn': 'WarningMsg', 'error': 'ErrorMsg'}, l:type, 'MoreMsg')
-  execute 'echohl ' . l:hl
-  echo '[MyFinder] ' . a:msg
-  echohl None
-endfunction
-
 function! myfinder#core#toggle_preview() abort
   let g:myfinder_preview_enabled = !g:myfinder_preview_enabled
-  call myfinder#core#echo('Preview ' . (g:myfinder_preview_enabled ? 'Enabled' : 'Disabled'), g:myfinder_preview_enabled ? 'success' : 'warn')
+  call myfinder#utils#echo('Preview ' . (g:myfinder_preview_enabled ? 'Enabled' : 'Disabled'), g:myfinder_preview_enabled ? 'success' : 'warn')
 endfunction
 
 function! myfinder#core#set_preview_layout(layout) abort
   if index(['column', 'row'], a:layout) == -1
-    call myfinder#core#echo('Invalid preview layout: ' . a:layout, 'error')
+    call myfinder#utils#echo('Invalid preview layout: ' . a:layout, 'error')
     return
   endif
   let g:myfinder_preview_layout = a:layout
-  call myfinder#core#echo('Preview layout set to ' . a:layout, 'success')
+  call myfinder#utils#echo('Preview layout set to ' . a:layout, 'success')
 endfunction
 
 function! s:Quit() dict
   call popup_close(self.winid, -1)
-  if has_key(self, 'preview_timer') && self.preview_timer != -1
-    call timer_stop(self.preview_timer)
-    let self.preview_timer = -1
-  endif
-  if has_key(self, 'preview_winid') && self.preview_winid != 0
-    call popup_close(self.preview_winid, -1)
-    let self.preview_winid = 0
-  endif
+  call s:ClosePreviewWindow(self)
 endfunction
 
 function! s:CtxUpdateRes() dict
@@ -95,8 +71,13 @@ endfunction
 function! myfinder#core#start(items, actions, ...) abort
   let l:options = get(a:000, 0, {})
 
-  let l:preview_enabled = get(l:options, 'preview_enabled', g:myfinder_preview_enabled)
-  let l:preview_layout = get(l:options, 'preview_layout', g:myfinder_preview_layout)
+  if exists('g:myfinder_preview_enabled')
+    let l:preview_enabled = g:myfinder_preview_enabled
+  else
+    let l:preview_enabled = get(l:options, 'preview_enabled', 0)
+  endif
+
+  let l:preview_layout = get(g:,'myfinder_preview_layout', 'column')
   let l:w = float2nr(&columns * 0.8)
   let l:h = float2nr(&lines * 0.6)
   if l:preview_enabled
@@ -136,18 +117,18 @@ function! myfinder#core#start(items, actions, ...) abort
         \ 'save_t_ve': '',
         \ 'save_guicursor': '',
         \ 'default_actions': {
-        \     'esc': function('s:ESC'), 
-        \     'open': function('s:GenericOpen'),
-        \     'open_with_new_tab': function('s:GenericOpenTab'),
-        \     'open_horizontally': function('s:GenericOpenHorizontally'),
-        \     'open_vertically': function('s:GenericOpenVertically'),
-        \     'bs': function('s:BS'),
-        \     'clear': function('s:Clear'),
-        \     'delete_a_word': function('s:DeleteAWord'),
+        \     'esc': function('myfinder#actions#esc'), 
+        \     'open': function('myfinder#actions#open'),
+        \     'open_with_new_tab': function('myfinder#actions#open_with_new_tab'),
+        \     'open_horizontally': function('myfinder#actions#open_horizontally'),
+        \     'open_vertically': function('myfinder#actions#open_vertically'),
+        \     'bs': function('myfinder#actions#bs'),
+        \     'clear': function('myfinder#actions#clear'),
+        \     'delete_a_word': function('myfinder#actions#delete_a_word'),
         \     'select_up': function('s:SelectUp'),
         \     'select_down': function('s:SelectDown'),
         \     'preview_once': function('s:PreviewOnce'),
-        \     'copy_path': function('s:CopyPath'),
+        \     'copy_path': function('myfinder#actions#copy_path'),
         \     },
         \ }
   
@@ -176,7 +157,7 @@ function! myfinder#core#start(items, actions, ...) abort
         \ }
   
   " Default action shortcuts for menu (action -> char)
-  let l:ctx.action_shortcuts = {
+  let l:all_action_shortcuts = {
         \ 'open': 'o',
         \ 'open_with_new_tab': 't',
         \ 'open_horizontally': 'x',
@@ -185,6 +166,13 @@ function! myfinder#core#start(items, actions, ...) abort
         \ 'preview_once': 'p',
         \ 'copy_path': 'y',
         \ }
+  
+  let l:ctx.action_shortcuts = {}
+  for [l:act, l:key] in items(l:all_action_shortcuts)
+    if has_key(l:ctx.actions, l:act) || has_key(l:ctx.default_actions, l:act)
+      let l:ctx.action_shortcuts[l:act] = l:key
+    endif
+  endfor
 
   " Merge user defined mappings
   let l:user_mappings = get(g:, 'myfinder_mappings', {})
@@ -286,63 +274,89 @@ function! myfinder#core#start(items, actions, ...) abort
         \ 'borderhighlight': ['FinderSeparator'],
         \ 'padding': [0,0,0,0],
         \ 'cursorline': 1,
-        \ 'filter': function('s:FinderFilter'),
-        \ 'callback': function('s:FinderCallback'),
+        \ 'filter': function('s:FinderFilter', [l:ctx]),
+        \ 'callback': function('s:FinderCallback', [l:ctx]),
         \ 'mapping': 0,
         \ }
   
+  if l:ctx.preview_enabled
+    let l:pos = s:GetLayoutPos(l:ctx.width, l:ctx.height, l:ctx.preview_layout)
+    let l:attr.line = l:pos.main.line
+    let l:attr.col = l:pos.main.col
+  endif
+
   let l:ctx.winid = popup_create([], l:attr)
-  call win_execute(l:ctx.winid, 'setlocal buftype=nofile bufhidden=wipe nobuflisted noswapfile')
+  call win_execute(l:ctx.winid, 'setlocal nonumber norelativenumber signcolumn=no foldcolumn=0 nofoldenable nolist bufhidden=wipe nobuflisted noswapfile')
   call s:BuildContent(l:ctx)
-  
-  " Store context in script-local dictionary
-  let s:finders[l:ctx.winid] = l:ctx
   
   call s:ApplyHighLights(l:ctx)
   
   " Select first item (line 3)
   call win_execute(l:ctx.winid, "normal! 3G")
+
   call s:TriggerPreview(l:ctx)
 
-  if l:ctx.preview_enabled
-    call s:CreatePreviewWindow(l:ctx)
-  endif
-  
   return l:ctx
 endfunction
 
+function! s:GetLayoutPos(width, height, layout) abort
+  let l:gap = 1
+  let l:res = {'main': {}, 'preview': {}}
+  
+  if a:layout ==# 'column'
+    let l:group_w = a:width * 2 + l:gap
+    let l:group_h = a:height
+    let l:start_col = max([1, float2nr((&columns - l:group_w) / 2.0)])
+    let l:start_line = max([1, float2nr((&lines - l:group_h) / 2.0)])
+    
+    let l:res.main.line = l:start_line
+    let l:res.main.col = l:start_col
+    let l:res.preview.line = l:start_line
+    let l:res.preview.col = l:start_col + a:width + l:gap
+  else
+    let l:group_w = a:width
+    let l:group_h = a:height * 2 + l:gap
+    let l:start_col = max([1, float2nr((&columns - l:group_w) / 2.0)])
+    let l:start_line = max([1, float2nr((&lines - l:group_h) / 2.0)])
+    
+    let l:res.main.line = l:start_line
+    let l:res.main.col = l:start_col
+    let l:res.preview.line = l:start_line + a:height + l:gap
+    let l:res.preview.col = l:start_col
+  endif
+  
+  return l:res
+endfunction
+
+function! s:ClosePreviewWindow(ctx) abort
+  if has_key(a:ctx, 'preview_timer') && a:ctx.preview_timer != -1
+    call timer_stop(a:ctx.preview_timer)
+    let a:ctx.preview_timer = -1
+  endif
+  if has_key(a:ctx, 'preview_winid') && a:ctx.preview_winid != 0
+    call popup_close(a:ctx.preview_winid, -1)
+    let a:ctx.preview_winid = 0
+  endif
+endfunction
+
 function! s:CreatePreviewWindow(ctx) abort
+  call s:ClosePreviewWindow(a:ctx)
   if !a:ctx.preview_enabled
     return
   endif
-  let l:gap = 1
+  
+  let l:pos = s:GetLayoutPos(a:ctx.width, a:ctx.height, a:ctx.preview_layout)
+  
+  " Move main popup to the computed start position
+  call popup_move(a:ctx.winid, {'line': l:pos.main.line, 'col': l:pos.main.col})
+  
   let l:preview_w = a:ctx.width
   let l:preview_h = a:ctx.height
-  if a:ctx.preview_layout ==# 'column'
-    let l:group_w = a:ctx.width * 2 + l:gap
-    let l:group_h = a:ctx.height
-    let l:start_col = max([1, float2nr((&columns - l:group_w) / 2.0)])
-    let l:start_line = max([1, float2nr((&lines - l:group_h) / 2.0)])
-    " Move main popup to the computed start position
-    call popup_move(a:ctx.winid, {'line': l:start_line, 'col': l:start_col})
-    " Preview to the right
-    let l:preview_col = l:start_col + a:ctx.width + l:gap
-    let l:preview_line = l:start_line
-  else
-    let l:group_w = a:ctx.width
-    let l:group_h = a:ctx.height * 2 + l:gap
-    let l:start_col = max([1, float2nr((&columns - l:group_w) / 2.0)])
-    let l:start_line = max([1, float2nr((&lines - l:group_h) / 2.0)])
-    " Move main popup to the computed start position
-    call popup_move(a:ctx.winid, {'line': l:start_line, 'col': l:start_col})
-    " Preview below
-    let l:preview_line = l:start_line + a:ctx.height + l:gap
-    let l:preview_col = l:start_col
-  endif
+
   let l:attr = {
         \ 'pos': 'topleft',
-        \ 'line': l:preview_line,
-        \ 'col': l:preview_col,
+        \ 'line': l:pos.preview.line,
+        \ 'col': l:pos.preview.col,
         \ 'minwidth': l:preview_w,
         \ 'maxwidth': l:preview_w,
         \ 'minheight': l:preview_h,
@@ -355,7 +369,7 @@ function! s:CreatePreviewWindow(ctx) abort
         \ 'cursorline': 0,
         \ 'mapping': 0,
         \ }
-  let a:ctx.preview_winid = popup_create(['Preview Disabled'], l:attr)
+  let a:ctx.preview_winid = popup_create(['Nothing To Preview.'], l:attr)
   call win_execute(a:ctx.preview_winid, 'setlocal nonumber norelativenumber signcolumn=no foldcolumn=0 nofoldenable nolist bufhidden=wipe nobuflisted noswapfile')
 endfunction
 
@@ -606,10 +620,6 @@ function! s:HandleCallback(ctx, key, action, selected) abort
   endif
   
   if !empty(l:Callback)
-    " Prevent actions that require selection if no item is selected
-    if empty(a:selected) && index(['open', 'open_with_new_tab', 'open_vertically', 'delete'], a:action) != -1
-      return 0
-    endif
     let a:ctx.selected = a:selected
     let a:ctx.key = a:key
     let a:ctx.action = a:action
@@ -620,58 +630,27 @@ function! s:HandleCallback(ctx, key, action, selected) abort
 endfunction
 
 function! s:TriggerPreview(ctx, ...) abort
+  call s:ClosePreviewWindow(a:ctx)
+
+  if !a:ctx.preview_enabled
+    return
+  endif
+
   let l:Preview = get(a:ctx.actions, 'preview', '')
   if empty(l:Preview)
     let l:Preview = get(a:ctx.default_actions, 'preview', '')
   endif
 
-  if a:ctx.preview_enabled
-    let l:d = get(a:000, 0, a:ctx.preview_delay)
-    if a:ctx.preview_timer != -1
-      call timer_stop(a:ctx.preview_timer)
-      let a:ctx.preview_timer = -1
-    endif
-    if l:d > 0
-      let a:ctx.preview_timer = timer_start(l:d, {-> s:DoPreview(a:ctx, l:Preview)})
-    else
-      call s:DoPreview(a:ctx, l:Preview)
-    endif
+  let l:d = get(a:000, 0, a:ctx.preview_delay)
+  if l:d > 0
+    let a:ctx.preview_timer = timer_start(l:d, {-> s:DoPreview(a:ctx, l:Preview)},{'repeat': 1})
   else
-    if !empty(l:Preview)
-      let l:line = line('.', a:ctx.winid)
-      let l:index = l:line - 3
-      if l:index >= 0 && l:index < len(a:ctx.matches)
-        let a:ctx.selected = a:ctx.matches[l:index]
-        call call(l:Preview, [], a:ctx)
-      endif
-    endif
+    call s:DoPreview(a:ctx, l:Preview)
   endif
 endfunction
 
-function! s:GuessFiletype(path) abort
-  let l:ext = tolower(fnamemodify(a:path, ':e'))
-  let l:map = {
-        \ 'vim': 'vim',
-        \ 'tex': 'tex',
-        \ 'vue': 'vue',
-        \ 'lua': 'lua',
-        \ 'js': 'javascript',
-        \ 'ts': 'typescript',
-        \ 'json': 'json',
-        \ 'py': 'python',
-        \ 'go': 'go',
-        \ 'rs': 'rust',
-        \ 'java': 'java',
-        \ 'sh': 'sh',
-        \ 'md': 'markdown',
-        \ 'yaml': 'yaml',
-        \ 'yml': 'yaml',
-        \ }
-  return get(l:map, l:ext, 'text')
-endfunction
-
 function! myfinder#core#GuessFiletype(path) abort
-  return s:GuessFiletype(a:path)
+  return myfinder#utils#GuessFiletype(a:path)
 endfunction
 
 function! s:DoPreview(ctx, Preview) abort
@@ -682,133 +661,12 @@ function! s:DoPreview(ctx, Preview) abort
     return
   endif
   let a:ctx.selected = a:ctx.matches[l:index]
+  call s:CreatePreviewWindow(a:ctx)
   " If custom preview is provided and preview window exists, let finder handle it
-  if !empty(a:Preview)
-    call call(a:Preview, [], a:ctx)
-    return
-  endif
-  if a:ctx.preview_winid == 0
-    return
-  endif
-  " Generic file preview via buffer
-  let l:path = ''
-  if has_key(a:ctx.selected, 'path')
-    let l:path = a:ctx.selected.path
-  elseif has_key(a:ctx.selected, 'file')
-    let l:path = a:ctx.selected.file
-  endif
-  if empty(l:path) || !filereadable(l:path)
-    call popup_settext(a:ctx.preview_winid, ['No preview available'])
-    return
-  endif
-  let l:lines = readfile(l:path, '', 500)
-  if empty(l:lines)
-    let l:lines = ['']
-  endif
-  call popup_settext(a:ctx.preview_winid, l:lines)
-  let l:ft = s:GuessFiletype(l:path)
-  call win_execute(a:ctx.preview_winid, 'setlocal filetype=' . l:ft)
+  call call(a:Preview, [], a:ctx)
 endfunction
 
-function! s:BS() dict
-  let self.filter = strcharpart(self.filter, 0, strchars(self.filter) - 1)
-  call self.update_res()
-endfunction
 
-function! s:Clear() dict
-  let self.filter = ''
-  call self.update_res()
-endfunction
-
-function! s:ESC() dict
-  call self.quit()
-endfunction
-
-function! s:ENTER() dict
-  call self.quit()
-endfunction
-
-" Generic open actions that work with different item types
-function! s:GenericOpen() dict
-  call self.quit()
-  call s:OpenItem(self.selected, 'edit')
-endfunction
-
-function! s:GenericOpenTab() dict
-  call self.quit()
-  execute 'tab split'
-  call s:OpenItem(self.selected, 'edit')
-endfunction
-
-function! s:GenericOpenHorizontally() dict
-  call self.quit()
-  execute 'split'
-  call s:OpenItem(self.selected, 'edit')
-endfunction
-
-function! s:GenericOpenVertically() dict
-  call self.quit()
-  execute 'rightbelow vertical split'
-  call s:OpenItem(self.selected, 'edit')
-endfunction
-
-" Helper function to open different item types
-function! s:OpenItem(item, cmd) abort
-  " Handle buffer
-  if has_key(a:item, 'bufnr')
-    execute 'buffer ' . a:item.bufnr
-    if has_key(a:item, 'line')
-      call cursor(a:item.line, get(a:item, 'col', 1))
-      normal! zz
-    endif
-    return
-  endif
-  
-  " Handle window
-  if has_key(a:item, 'target_winid')
-    call win_gotoid(a:item.target_winid)
-    return
-  endif
-  
-  " Handle file path
-  if has_key(a:item, 'file')
-    execute a:cmd . ' ' . fnameescape(a:item.file)
-    if has_key(a:item, 'line')
-      call cursor(a:item.line, get(a:item, 'col', 1))
-      normal! zz
-    endif
-    return
-  endif
-  
-  " Handle path
-  if has_key(a:item, 'path')
-    execute a:cmd . ' ' . fnameescape(a:item.path)
-    if has_key(a:item, 'line')
-      call cursor(a:item.line, get(a:item, 'col', 1))
-      normal! zz
-    endif
-    return
-  endif
-  
-  " Handle winid (for line finder)
-  if has_key(a:item, 'winid') && has_key(a:item, 'lnum')
-    call win_execute(a:item.winid, a:item.lnum)
-    call win_execute(a:item.winid, 'normal! zz')
-    return
-  endif
-endfunction
-
-function! s:DeleteAWord() dict
-  let l:len = strchars(self.filter)
-  if l:len > 0
-    let l:new_filter = substitute(self.filter, '\v\S+\s*$', '', '')
-    if l:new_filter == self.filter && l:len > 0
-      let l:new_filter = strcharpart(self.filter, 0, l:len - 1)
-    endif
-    let self.filter = l:new_filter
-    call self.update_res()
-  endif
-endfunction
 
 function! s:SelectDown() dict
   let l:lnum = line('.', self.winid)
@@ -836,11 +694,8 @@ function! s:SelectUp() dict
   endif
 endfunction
 
-function! s:FinderFilter(winid, key) abort
-  let l:ctx = get(s:finders, a:winid, {})
-  if empty(l:ctx)
-    return 0
-  endif
+function! s:FinderFilter(ctx, winid, key) abort
+  let l:ctx = a:ctx
 
   let l:action = get(l:ctx.key_map, a:key, '')
 
@@ -876,7 +731,12 @@ function! s:FinderFilter(winid, key) abort
   endif
   
   if l:action != ''
-    call s:HandleCallback(l:ctx, a:key, l:action, l:selected)
+    let l:start = reltime()
+    let l:res = s:HandleCallback(l:ctx, a:key, l:action, l:selected)
+    if l:res
+        let l:cost = reltimefloat(reltime(l:start))
+        call myfinder#utils#echo(printf('Action [%s] completed in %.3fs', l:action, l:cost), 'info')
+    endif
   endif
   
   return 1
@@ -884,7 +744,6 @@ endfunction
 
 function! s:PreviewOnce() dict
   if self.preview_enabled
-    call s:TriggerPreview(self, 0)
     return
   endif
   let self.preview_enabled = 1
@@ -905,18 +764,11 @@ function! s:PreviewOnce() dict
   call s:BuildContent(self)
   call s:ApplyHighLights(self)
   " Create and center preview window next to main
-  call s:CreatePreviewWindow(self)
   call s:TriggerPreview(self, 0)
 endfunction
 
-function! s:FinderCallback(winid, result) abort
-  let l:ctx = get(s:finders, a:winid, {})
-  if !empty(l:ctx)
-    call s:RestoreCursor(l:ctx)
-    if has_key(s:finders, a:winid)
-      unlet s:finders[a:winid]
-    endif
-  endif
+function! s:FinderCallback(ctx, winid, result) abort
+  call s:RestoreCursor(a:ctx)
 endfunction
 
 function! s:HideCursor(ctx) abort
@@ -944,23 +796,7 @@ function! s:RestoreCursor(ctx) abort
   endif
 endfunction
 
-function! s:CopyPath() dict
-  let l:path = ''
-  if has_key(self.selected, 'path')
-    let l:path = self.selected.path
-  elseif has_key(self.selected, 'file')
-    let l:path = self.selected.file
-  endif
-  
-  if !empty(l:path)
-    let l:abs_path = fnamemodify(l:path, ':p')
-    call setreg('+', l:abs_path)
-    call setreg('*', l:abs_path)
-    call myfinder#core#echo('Copied: ' . l:abs_path, 'success')
-  else
-    call myfinder#core#echo('No path to copy', 'warn')
-  endif
-endfunction
+
 
 function! s:ShowActions(ctx) abort
   let l:actions = []
@@ -971,23 +807,9 @@ function! s:ShowActions(ctx) abort
   " Collect available actions
   let l:avail = keys(a:ctx.actions)
   
-  " Add defaults ONLY if they make sense for the current item
-  let l:has_path = has_key(a:ctx.selected, 'path') || has_key(a:ctx.selected, 'file')
-  
-  " File/Path related actions
-  if l:has_path
-    for l:a in ['open', 'open_with_new_tab', 'open_horizontally', 'open_vertically', 'copy_path', 'preview_once']
-        if index(l:avail, l:a) == -1
-            call add(l:avail, l:a)
-        endif
-    endfor
-  else
-    " For non-path items, we might still support 'open' if the finder provides a custom 'open' callback
-    " But we should NOT blindly add tab/split/copy_path unless the finder explicitly supports them.
-    " However, 'preview_once' might be supported if 'preview' callback is present.
-    if has_key(a:ctx.actions, 'preview') && index(l:avail, 'preview_once') == -1
-         call add(l:avail, 'preview_once')
-    endif
+  " Add 'preview_once' if 'preview' capability exists
+  if has_key(a:ctx.actions, 'preview') && index(l:avail, 'preview_once') == -1
+      call add(l:avail, 'preview_once')
   endif
   
   " Filter out 'preview' if 'preview_once' is present or vice-versa to avoid duplication
@@ -1057,6 +879,11 @@ function! s:ShowActions(ctx) abort
   let l:line = l:pos.line + l:row
   let l:col_abs = l:pos.col + l:col
 
+  let l:menu_ctx = {
+        \ 'parent_ctx': a:ctx,
+        \ 'action_map': l:action_map,
+        \ }
+
   let l:attr = {
         \ 'line': l:line,
         \ 'col': l:col_abs,
@@ -1068,7 +895,7 @@ function! s:ShowActions(ctx) abort
         \ 'borderchars': g:myfinder_popup_borders,
         \ 'padding': [0,0,0,0],
         \ 'mapping': 0,
-        \ 'filter': function('s:ActionMenuFilter'),
+        \ 'filter': function('s:ActionMenuFilter', [l:menu_ctx]),
         \ 'zindex': 1000,
         \ }
   
@@ -1079,36 +906,19 @@ function! s:ShowActions(ctx) abort
   call win_execute(l:winid, 'syntax match MyFinderActionKey /^\s*\zs.\ze\s/ contained')
   call win_execute(l:winid, 'syntax match MyFinderActionLine /.*/ contains=MyFinderActionKey')
   call win_execute(l:winid, 'highlight default link MyFinderActionKey Special')
-
-  " Store context for the menu
-  let s:action_menus[l:winid] = {
-        \ 'winid': l:winid,
-        \ 'parent_ctx': a:ctx,
-        \ 'action_map': l:action_map,
-        \ }
 endfunction
 
-function! s:ActionMenuFilter(winid, key) abort
-  let l:ctx = get(s:action_menus, a:winid, {})
-  if empty(l:ctx)
-    call popup_close(a:winid)
-    return 0
-  endif
-
+function! s:ActionMenuFilter(ctx, winid, key) abort
+  let l:ctx = a:ctx
+  
   if a:key == "\<Esc>"
     call popup_close(a:winid)
-    if has_key(s:action_menus, a:winid)
-      unlet s:action_menus[a:winid]
-    endif
     return 1
   endif
   
   if has_key(l:ctx.action_map, a:key)
     let l:act = l:ctx.action_map[a:key]
     call popup_close(a:winid)
-    if has_key(s:action_menus, a:winid)
-      unlet s:action_menus[a:winid]
-    endif
     
     " Execute action on parent
     let l:pctx = l:ctx.parent_ctx

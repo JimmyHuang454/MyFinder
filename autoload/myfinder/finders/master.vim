@@ -4,10 +4,10 @@ if !exists('s:usage')
   let s:usage = {}
 endif
 
-function! myfinder#master#start() abort
+function! myfinder#finders#master#start() abort
   let l:start_time = reltime()
   let l:defs = [
-        \ {'text': 'Line',    'cmd': 'FinderLine',    'help': 'Search lines in current buffer'},
+        \ {'text': 'FileLine','cmd': 'FinderFileLine','help': 'Search lines in current buffer'},
         \ {'text': 'Buffer',  'cmd': 'FinderBuffer',  'help': 'List and manage buffers'},
         \ {'text': 'Window',  'cmd': 'FinderWindow',  'help': 'Switch to another window'},
         \ {'text': 'Mark',    'cmd': 'FinderMark',    'help': 'Saved marks'},

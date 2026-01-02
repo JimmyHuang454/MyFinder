@@ -1,4 +1,4 @@
-function! myfinder#history#start() abort
+function! myfinder#finders#history#start() abort
   let l:hist_list = []
   let l:count = histnr('cmd')
   for l:i in range(l:count, 1, -1)

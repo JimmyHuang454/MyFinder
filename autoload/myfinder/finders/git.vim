@@ -1,14 +1,14 @@
 
-function! myfinder#git#log() abort
+function! myfinder#finders#git#log() abort
   let l:start_time = reltime()
   if !executable('git')
-    call myfinder#core#echo('Git is not executable', 'error')
+    call myfinder#utils#echo('Git is not executable', 'error')
     return
   endif
 
   let l:commits = systemlist('git log --format="%h|%an|%s"')
   if v:shell_error
-    call myfinder#core#echo('Failed to get git log', 'error')
+    call myfinder#utils#echo('Failed to get git log', 'error')
     return
   endif
 
@@ -35,6 +35,7 @@ function! myfinder#git#log() abort
         \ 'open': function('s:Show'),
         \ 'open_with_new_tab': function('s:ShowTab'),
         \ 'open_vertically': function('s:ShowRight'),
+        \ 'open_horizontally': function('s:ShowHorizontal'),
         \ }, {
         \ 'name': 'Git Log',
         \ 'syntax': [
@@ -77,6 +78,18 @@ function! s:ShowRight() dict
     execute 'rightbelow Gvsplit ' . self.selected.hash
   else
     execute 'rightbelow vnew'
+    execute 'read !git show ' . self.selected.hash
+    setlocal buftype=nofile bufhidden=wipe filetype=git
+    normal! ggdd
+  endif
+endfunction
+
+function! s:ShowHorizontal() dict
+  call self.quit()
+  if exists(':Gsplit')
+    execute 'Gsplit ' . self.selected.hash
+  else
+    execute 'new'
     execute 'read !git show ' . self.selected.hash
     setlocal buftype=nofile bufhidden=wipe filetype=git
     normal! ggdd

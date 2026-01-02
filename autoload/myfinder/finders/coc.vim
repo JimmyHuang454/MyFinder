@@ -1,14 +1,14 @@
 " autoload/myfinder/coc.vim
 
 " --- Diagnostics ---
-function! myfinder#coc#diagnostics() abort
+function! myfinder#finders#coc#diagnostics() abort
   if !exists('*CocAction')
-    call myfinder#core#echo('coc.nvim not installed', 'error')
+    call myfinder#utils#echo('coc.nvim not installed', 'error')
     return
   endif
   let l:diags = CocAction('diagnosticList')
   if empty(l:diags)
-    call myfinder#core#echo('No diagnostics found', 'warn')
+    call myfinder#utils#echo('No diagnostics found', 'warn')
     return
   endif
 
@@ -56,47 +56,16 @@ function! s:CopyDiagMsg() dict
   if !empty(l:msg)
     call setreg('+', l:msg)
     call setreg('*', l:msg)
-    call myfinder#core#echo('Copied diagnostic: ' . l:msg, 'success')
+    call myfinder#utils#echo('Copied diagnostic: ' . l:msg, 'success')
   else
-    call myfinder#core#echo('No message to copy', 'warn')
+    call myfinder#utils#echo('No message to copy', 'warn')
   endif
-endfunction
-
-function! s:OpenDiag() dict
-  call self.quit()
-  execute 'edit ' . fnameescape(self.selected.path)
-  call cursor(self.selected.line, self.selected.col)
-  normal! zz
-endfunction
-
-function! s:PreviewDiag() dict
-  if self.preview_winid == 0
-    return
-  endif
-  let l:path = get(self.selected, 'path', '')
-  if empty(l:path) || !filereadable(l:path)
-    call popup_settext(self.preview_winid, ['No preview available'])
-    return
-  endif
-  
-  let l:lines = readfile(l:path, '', 500)
-  if empty(l:lines)
-    let l:lines = ['']
-  endif
-  call popup_settext(self.preview_winid, l:lines)
-  
-  let l:ft = myfinder#core#GuessFiletype(l:path)
-  call win_execute(self.preview_winid, 'setlocal filetype=' . l:ft)
-  
-  let l:line = self.selected.line
-  call win_execute(self.preview_winid, 'call matchadd("Search", "\\%" . ' . l:line . ' . "l")')
-  call win_execute(self.preview_winid, 'normal! ' . l:line . 'Gzz')
 endfunction
 
 " --- Commands ---
-function! myfinder#coc#commands() abort
+function! myfinder#finders#coc#commands() abort
   if !exists('*CocAction')
-     call myfinder#core#echo('coc.nvim not installed', 'error')
+     call myfinder#utils#echo('coc.nvim not installed', 'error')
      return
   endif
   let l:cmds = CocAction('commands')
@@ -138,15 +107,15 @@ function! s:RunCommand() dict
 endfunction
 
 " --- Extensions ---
-function! myfinder#coc#extensions() abort
+function! myfinder#finders#coc#extensions() abort
   let l:start_time = reltime()
   if !exists('*CocAction')
-    call myfinder#core#echo('coc.nvim not installed', 'error')
+    call myfinder#utils#echo('coc.nvim not installed', 'error')
     return
   endif
   let l:exts = CocAction('extensionStats')
   if empty(l:exts)
-    call myfinder#core#echo('No extensions found', 'warn')
+    call myfinder#utils#echo('No extensions found', 'warn')
     return
   endif
   
@@ -212,23 +181,21 @@ function! s:RefreshExts(ctx) abort
 endfunction
 
 " --- Symbols (Document) ---
-function! myfinder#coc#symbols() abort
+function! myfinder#finders#coc#symbols() abort
   let l:start_time = reltime()
   if !exists('*CocAction')
-    call myfinder#core#echo('coc.nvim not installed', 'error')
+    call myfinder#utils#echo('coc.nvim not installed', 'error')
     return
   endif
   let l:symbols = CocAction('documentSymbols')
   if empty(l:symbols) || l:symbols == v:null
-    call myfinder#core#echo('No symbols found', 'warn')
+    call myfinder#utils#echo('No symbols found', 'warn')
     return
   endif
   
   let l:items = s:ProcessSymbols(l:symbols, '', 0)
   
   call myfinder#core#start(l:items, {
-        \ 'open': function('s:OpenSymbol'),
-        \ 'preview': function('s:PreviewSymbol'),
         \ }, {
         \ 'name': 'Symbols',
         \ 'start_time': l:start_time,
@@ -251,6 +218,7 @@ function! s:ProcessSymbols(symbols, p, level) abort
     let l:item = {
           \ 'text': l:name,
           \ 'path': expand('%:p'),
+          \ 'file_path': expand('%:p'),
           \ 'line': l:lnum,
           \ 'col': l:col,
           \ 'kind': l:kind,
@@ -297,9 +265,9 @@ function! s:PreviewSymbol() dict
 endfunction
 
 " --- Symbols (Workspace) ---
-function! myfinder#coc#workspace_symbols() abort
+function! myfinder#finders#coc#workspace_symbols() abort
   if !exists('*CocAction')
-    call myfinder#core#echo('coc.nvim not installed', 'error')
+    call myfinder#utils#echo('coc.nvim not installed', 'error')
     return
   endif
   
@@ -311,7 +279,7 @@ function! myfinder#coc#workspace_symbols() abort
   
   let l:symbols = CocAction('workspaceSymbols', l:query)
   if empty(l:symbols)
-    call myfinder#core#echo('No symbols found', 'warn')
+    call myfinder#utils#echo('No symbols found', 'warn')
     return
   endif
   
@@ -338,8 +306,6 @@ function! myfinder#coc#workspace_symbols() abort
   endfor
   
   call myfinder#core#start(l:items, {
-        \ 'open': function('s:OpenWorkspaceSymbol'),
-        \ 'preview': function('s:PreviewSymbol'),
         \ }, {
         \ 'name': 'WorkspaceSymbols',
         \ 'preview_enabled': 1,
