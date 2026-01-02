@@ -318,6 +318,20 @@ function! s:DeleteMark() dict
   
   call s:SaveMarks(l:new_marks)
   
+  if has('signs')
+    let l:buf = bufnr(l:path)
+    if l:buf != -1
+      let l:placed = sign_getplaced(l:buf, {'group': 'MyFinderMarkGroup'})
+      if !empty(l:placed) && has_key(l:placed[0], 'signs')
+        for l:s in l:placed[0].signs
+          if get(l:s, 'lnum', -1) == l:line && get(l:s, 'name', '') ==# 'MyFinderMark'
+            call sign_unplace('MyFinderMarkGroup', {'id': l:s.id, 'buffer': l:buf})
+          endif
+        endfor
+      endif
+    endif
+  endif
+  
   " Refresh list
   let l:items = []
   for l:mark in l:new_marks

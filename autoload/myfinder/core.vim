@@ -79,7 +79,6 @@ function! s:CtxUpdateRes() dict
   endif
   
   let l:content = s:BuildContent(self)
-  call popup_settext(self.winid, l:content)
   
   call s:ApplyHighLights(self)
   
@@ -289,13 +288,12 @@ function! myfinder#core#start(items, actions, ...) abort
         \ 'cursorline': 1,
         \ 'filter': function('s:FinderFilter'),
         \ 'callback': function('s:FinderCallback'),
-        \ 'footer': (empty(l:ctx.status) ? '' : ' ' . l:ctx.status . ' '),
         \ 'mapping': 0,
-        \ 'wrap': 0,
         \ }
   
-  let l:content = s:BuildContent(l:ctx)
-  let l:ctx.winid = popup_create(l:content, l:attr)
+  let l:ctx.winid = popup_create([], l:attr)
+  call win_execute(l:ctx.winid, 'setlocal buftype=nofile bufhidden=wipe nobuflisted noswapfile')
+  call s:BuildContent(l:ctx)
   
   " Store context in script-local dictionary
   let s:finders[l:ctx.winid] = l:ctx
@@ -353,12 +351,12 @@ function! s:CreatePreviewWindow(ctx) abort
         \ 'border': [1,1,1,1],
         \ 'borderchars': g:myfinder_popup_borders,
         \ 'borderhighlight': ['FinderSeparator'],
-        \ 'padding': [0,0,0,0],
+        \ 'padding': [0,0,0,1],
         \ 'cursorline': 0,
         \ 'mapping': 0,
         \ }
   let a:ctx.preview_winid = popup_create(['Preview Disabled'], l:attr)
-  call win_execute(a:ctx.preview_winid, 'setlocal buftype=nofile bufhidden=wipe nobuflisted noswapfile')
+  call win_execute(a:ctx.preview_winid, 'setlocal nonumber norelativenumber signcolumn=no foldcolumn=0 nofoldenable nolist bufhidden=wipe nobuflisted noswapfile')
 endfunction
 
 function! s:BuildPrompt(ctx) abort
@@ -459,6 +457,7 @@ function! s:BuildContent(ctx) abort
     call extend(l:content, l:list_content)
   endif
 
+  call popup_settext(a:ctx.winid, l:content)
   return l:content
 endfunction
 
@@ -467,7 +466,6 @@ function! s:ApplyHighLights(ctx) abort
   
   if !empty(a:ctx.filetype)
     call win_execute(a:ctx.winid, 'setlocal filetype=' . a:ctx.filetype)
-    call win_execute(a:ctx.winid, 'setlocal nonumber norelativenumber signcolumn=no foldcolumn=0 nofoldenable nolist nowrap')
   else
     call win_execute(a:ctx.winid, 'syntax clear')
   endif
@@ -904,8 +902,7 @@ function! s:PreviewOnce() dict
         \ 'minheight': self.height,
         \ 'maxheight': self.height
         \ })
-  let l:content = s:BuildContent(self)
-  call popup_settext(self.winid, l:content)
+  call s:BuildContent(self)
   call s:ApplyHighLights(self)
   " Create and center preview window next to main
   call s:CreatePreviewWindow(self)
