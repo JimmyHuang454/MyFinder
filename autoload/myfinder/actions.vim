@@ -121,6 +121,7 @@ endfunction
 function! s:OpenItem(item) abort
   if has_key(a:item, 'winid')
     call win_gotoid(a:item.winid)
+    return
   endif
 
   if has_key(a:item, 'bufnr')

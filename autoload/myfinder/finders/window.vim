@@ -12,7 +12,7 @@ function! myfinder#finders#window#start() abort
     let l:item = {
           \ 'text': l:text,
           \ 'display': l:text,
-          \ 'target_winid': l:w.winid,
+          \ 'winid': l:w.winid,
           \ 'lnum': l:w.winrow,
           \ 'col': l:w.wincol,
           \ }
