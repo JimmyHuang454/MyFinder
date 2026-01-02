@@ -144,7 +144,7 @@ function! s:ProcessLines(ctx, lines) abort
             \ 'text': trim(l:data.lines.text),
             \ 'p': l:p,
             \ 'path': l:path,
-            \ 'line': l:lnum,
+            \ 'lnum': l:lnum,
             \ 'col': 1,
             \ 'highlights': [],
             \ }
