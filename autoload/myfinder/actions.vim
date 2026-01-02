@@ -4,6 +4,7 @@ endfunction
 
 function! myfinder#actions#open() dict
   call self.quit()
+  let g:dd = self.selected
   call s:OpenItem(self.selected)
 endfunction
 
@@ -121,22 +122,21 @@ endfunction
 function! s:OpenItem(item) abort
   if has_key(a:item, 'winid')
     call win_gotoid(a:item.winid)
-    return
-  endif
-
-  if has_key(a:item, 'bufnr')
-    execute 'buffer ' . a:item.bufnr
   else
-    let l:path = ''
-    if has_key(a:item, 'file_path')
-      let l:path =  fnameescape(a:item.file_path)
-    elseif has_key(a:item, 'path')
-      let l:path =  fnameescape(a:item.path)
-    endif
-    if l:path != ''
-    call myfinder#frequency#increase(l:path)
-    if !has_key(a:item, 'bufnr') && !has_key(a:item, 'winid')
+    if has_key(a:item, 'bufnr')
+      execute 'buffer ' . a:item.bufnr
+    else
+      let l:path = ''
+      if has_key(a:item, 'file_path')
+        let l:path =  fnameescape(a:item.file_path)
+      elseif has_key(a:item, 'path')
+        let l:path =  fnameescape(a:item.path)
+      endif
+      if l:path != ''
+        call myfinder#frequency#increase(l:path)
+        if !has_key(a:item, 'bufnr') && !has_key(a:item, 'winid')
           execute 'edit ' . l:path
+        endif
       endif
     endif
   endif

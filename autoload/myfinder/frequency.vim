@@ -77,6 +77,18 @@ function! myfinder#frequency#get(path) abort
   return get(s:frequency, l:key, 0)
 endfunction
 
+function! myfinder#frequency#remove(path) abort
+  if !s:IsEnabled()
+    return
+  endif
+  call s:Load()
+  let l:key = fnamemodify(a:path, ':p')
+  if has_key(s:frequency, l:key)
+    call remove(s:frequency, l:key)
+    call myfinder#frequency#save()
+  endif
+endfunction
+
 function! myfinder#frequency#increase(path) abort
   if !s:IsEnabled()
     return

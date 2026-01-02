@@ -1,4 +1,27 @@
 
+function! s:Delete() dict
+  if empty(self.selected)
+    return
+  endif
+  let l:path = self.selected.path
+  
+  call myfinder#frequency#remove(l:path)
+  
+  let l:idx = -1
+  for l:i in range(len(self.items))
+    if self.items[l:i].path ==# l:path
+      let l:idx = l:i
+      break
+    endif
+  endfor
+  
+  if l:idx != -1
+    call remove(self.items, l:idx)
+    call self.update_res()
+    call myfinder#utils#echo('Deleted: ' . fnamemodify(l:path, ':~:.'), 'success')
+  endif
+endfunction
+
 function! myfinder#finders#mru#start() abort
   let l:start_time = reltime()
   let l:mru_dict = {}
@@ -28,6 +51,7 @@ function! myfinder#finders#mru#start() abort
   endfor
   
   call myfinder#core#start(l:items, {
+        \ 'delete': function('s:Delete'),
         \ 'preview': function('myfinder#actions#preview'),
         \ 'open': function('myfinder#actions#open'),
         \ 'open_with_new_tab': function('myfinder#actions#open_with_new_tab'),

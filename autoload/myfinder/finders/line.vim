@@ -1,16 +1,15 @@
-
 function! myfinder#finders#line#start() abort
   let l:start_time = reltime()
   let l:lines = getline(1, '$')
   let l:items = []
-  let l:winid = win_getid()
+  let l:bufnr = bufnr('%')
   let l:ft = &filetype
 
   for i in range(len(l:lines))
     call add(l:items, {
           \ 'text': l:lines[i],
           \ 'lnum': i + 1,
-          \ 'winid': l:winid,
+          \ 'bufnr': l:bufnr,
           \ })
   endfor
   
