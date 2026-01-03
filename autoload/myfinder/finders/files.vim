@@ -1,11 +1,13 @@
+if !exists('g:myfinder_file_cache')
+  let g:myfinder_file_cache = {}
+endif
+
 function! myfinder#finders#files#start() abort
   let l:start_time = reltime()
   let l:is_git = 0
   
   " Check for git repository
   if exists('g:loaded_fugitive') && !empty(fugitive#statusline())
-    let l:is_git = 1
-  elseif isdirectory('.git') || !empty(finddir('.git', '.;'))
     let l:is_git = 1
   endif
 
@@ -19,47 +21,37 @@ function! myfinder#finders#files#start() abort
     
     " Try to get git root
     let l:git_root = ''
-    if exists('g:loaded_fugitive')
-       try
-         let l:git_dir = FugitiveGitDir(bufnr('%'))
-         let l:git_root = fnamemodify(l:git_dir, ':h')
-       catch
-       endtry
-    endif
+    let l:git_root = fnamemodify(FugitiveGitDir(bufnr('%')), ':h')
     
-    if empty(l:git_root)
-       let l:git_root_dir = finddir('.git', '.;')
-       if !empty(l:git_root_dir)
-         let l:git_root = fnamemodify(l:git_root_dir, ':p:h:h')
-       endif
-    endif
-
     if !empty(l:git_root)
       execute 'lcd ' . l:git_root
     endif
 
-    if exists('g:loaded_fugitive')
-      let l:branch = FugitiveHead()
-      if !empty(l:branch)
-        let l:name .= printf(" (%s)", l:branch)
-      endif
+    let l:branch = FugitiveHead()
+    if !empty(l:branch)
+      let l:name .= printf(" (%s)", l:branch)
     endif
-    
-    " Use git ls-files to respect gitignore
-    if executable('git')
-      let l:files = systemlist('git ls-files --cached --others --exclude-standard')
-      if v:shell_error
-        let l:files = []
+  endif
+
+  let l:cwd = getcwd()
+  if has_key(g:myfinder_file_cache, l:cwd) && 0
+    let l:files = g:myfinder_file_cache[l:cwd]
+  else
+    if l:is_git
+      " Use git ls-files to respect gitignore
+      " let l:files = systemlist('git ls-files --cached --others --exclude-standard')
+      let l:files = fugitive#Execute(['ls-files'])['stdout']
+      
+      " Fallback if git failed or returned nothing (unlikely for valid repo)
+      if empty(l:files)
+        let l:files = s:GlobFiles()
       endif
-    endif
-    
-    " Fallback if git failed or returned nothing (unlikely for valid repo)
-    if empty(l:files)
+    else
       let l:files = s:GlobFiles()
     endif
-  else
-    let l:files = s:GlobFiles()
+    let g:myfinder_file_cache[l:cwd] = l:files
   endif
+
 
   let l:items = []
 

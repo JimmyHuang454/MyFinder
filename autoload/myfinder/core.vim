@@ -486,7 +486,7 @@ function! s:ApplyHighLights(ctx) abort
   
   call win_execute(a:ctx.winid, 'highlight link FinderPrompt Title')
   call win_execute(a:ctx.winid, 'highlight link FinderSeparator Comment')
-  call win_execute(a:ctx.winid, 'highlight link FinderMatch Search')
+  call win_execute(a:ctx.winid, 'highlight link FinderMatch Special')
   call win_execute(a:ctx.winid, 'highlight link FinderCursor CursorIM')
   call win_execute(a:ctx.winid, 'highlight link FinderStatus Type')
   call win_execute(a:ctx.winid, 'highlight link FinderDir Directory')
