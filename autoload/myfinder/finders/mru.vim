@@ -46,6 +46,10 @@ function! myfinder#finders#mru#start() abort
           \ }
     
     call myfinder#utils#setFiletype(l:item, l:file)
+
+    if has_key(l:item,'bufnr')
+      let l:item['text'] .= printf("*")
+    endif
     
     call add(l:items, l:item)
   endfor
@@ -62,6 +66,6 @@ function! myfinder#finders#mru#start() abort
         \ 'name': 'MRU',
         \ 'name_color': {'guibg': '#c678dd', 'ctermbg': 5},
         \ 'start_time': l:start_time,
-        \ 'display': ['is_loaded', 'text'],
+        \ 'display': ['text'],
         \ })
 endfunction

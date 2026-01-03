@@ -445,7 +445,7 @@ function! s:BuildContent(ctx) abort
       endif
       let l:seg = l:val
       let l:text_byte_start = l:byte_pos
-      if j == 0 && get(g:, 'myfinder_enable_icon', 1) && has_key(l:item, 'path')
+      if j == 0 && get(g:, 'myfinder_enable_icons', 1) && has_key(l:item, 'path')
         let l:ic = myfinder#icons#get(l:item.path)
         if !empty(l:ic)
           let l:seg = l:ic . ' ' . l:seg

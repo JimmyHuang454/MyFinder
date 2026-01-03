@@ -1,53 +1,82 @@
 function! myfinder#finders#files#start() abort
   let l:start_time = reltime()
   let l:is_git = 0
-
-  " Fugitive integration
-  if exists('g:loaded_fugitive')
-    if fugitive#statusline() != ''
-      let l:is_git = 1
-    endif
+  
+  " Check for git repository
+  if exists('g:loaded_fugitive') && !empty(fugitive#statusline())
+    let l:is_git = 1
+  elseif isdirectory('.git') || !empty(finddir('.git', '.;'))
+    let l:is_git = 1
   endif
 
-  let l:cmd = 'find . -maxdepth 5 -not -path "*/.*" -type f'
   let l:name = 'Files'
   let l:bg = '#98c379'
-
+  let l:files = []
 
   if l:is_git
     let l:name = 'Git'
     let l:bg = '#e5c07b'
-
-    let l:git_dir = FugitiveGitDir(bufnr('%'))
-    let l:git_root = fnamemodify(git_dir, ':h')
-
-    execute 'lcd ' . l:git_root
-
-    let l:branch = FugitiveHead()
-    if !empty(l:branch)
-      let l:name .= printf(" (%s)", l:branch)
+    
+    " Try to get git root
+    let l:git_root = ''
+    if exists('g:loaded_fugitive')
+       try
+         let l:git_dir = FugitiveGitDir(bufnr('%'))
+         let l:git_root = fnamemodify(l:git_dir, ':h')
+       catch
+       endtry
     endif
-  endif
+    
+    if empty(l:git_root)
+       let l:git_root_dir = finddir('.git', '.;')
+       if !empty(l:git_root_dir)
+         let l:git_root = fnamemodify(l:git_root_dir, ':p:h:h')
+       endif
+    endif
 
-  if l:is_git
-    let l:files = fugitive#Execute(['ls-files'])['stdout']
+    if !empty(l:git_root)
+      execute 'lcd ' . l:git_root
+    endif
+
+    if exists('g:loaded_fugitive')
+      let l:branch = FugitiveHead()
+      if !empty(l:branch)
+        let l:name .= printf(" (%s)", l:branch)
+      endif
+    endif
+    
+    " Use git ls-files to respect gitignore
+    if executable('git')
+      let l:files = systemlist('git ls-files --cached --others --exclude-standard')
+      if v:shell_error
+        let l:files = []
+      endif
+    endif
+    
+    " Fallback if git failed or returned nothing (unlikely for valid repo)
+    if empty(l:files)
+      let l:files = s:GlobFiles()
+    endif
   else
-    let l:files = systemlist(l:cmd)
-    if v:shell_error
-      call myfinder#utils#echo('Failed to list files', 'error')
-      return
-    endif
+    let l:files = s:GlobFiles()
   endif
 
   let l:items = []
 
   for l:file in l:files
-    if l:file == ''
+    if empty(l:file)
       continue
     endif
 
     let l:abs_path = fnamemodify(l:file, ':p')
+    
+    " Double check it's not a directory
+    if isdirectory(l:abs_path)
+      continue
+    endif
+
     let l:display_text = l:file
+    
     let l:freq = myfinder#frequency#get(l:abs_path)
 
     if l:freq > 0
@@ -60,6 +89,10 @@ function! myfinder#finders#files#start() abort
           \ }
     call myfinder#utils#setFiletype(l:item, l:file)
 
+    if has_key(l:item,'bufnr')
+      let l:item['text'] .= printf("*")
+    endif
+
     call add(l:items, l:item)
   endfor
 
@@ -70,10 +103,42 @@ function! myfinder#finders#files#start() abort
         \ 'open_vertically': function('myfinder#actions#open_vertically'),
         \ 'open_horizontally': function('myfinder#actions#open_horizontally'),
         \ 'copy_path': function('myfinder#actions#copy_path'),
+        \ 'delete_file': function('myfinder#actions#delete_file'),
+        \ 'create_file': function('myfinder#actions#create_file'),
+        \ 'move_file': function('myfinder#actions#move_file'),
+        \ 'copy_file': function('myfinder#actions#copy_file'),
+        \ 'paste_file': function('myfinder#actions#paste_file'),
         \ }, {
         \ 'name': l:name,
         \ 'name_color': {'guibg': l:bg, 'ctermbg': (l:is_git ? 3 : 2)},
         \ 'start_time': l:start_time,
-        \ 'display': ['is_loaded', 'text'],
+        \ 'display': ['text'],
+        \ 'mappings': {
+        \   "\<C-g>": 'create_file',
+        \   "\<C-d>": 'delete_file',
+        \   "\<C-r>": 'move_file',
+        \   "\<C-y>": 'copy_file',
+        \   "\<C-v>": 'paste_file',
+        \ },
         \ })
+endfunction
+
+function! s:GlobFiles() abort
+  let l:files = glob('**', 0, 1)
+  let l:res = []
+  
+  for l:f in l:files
+    if isdirectory(l:f)
+      continue
+    endif
+    
+    " Basic filtering for common ignored folders
+    if l:f =~# '\.git/' || l:f =~# 'node_modules/'
+      continue
+    endif
+    
+    call add(l:res, l:f)
+  endfor
+  
+  return l:res
 endfunction
