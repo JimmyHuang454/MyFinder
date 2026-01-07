@@ -79,7 +79,7 @@ function! myfinder#finders#files#start() abort
           \ 'text': l:display_text,
           \ 'path': l:abs_path,
           \ }
-    call myfinder#utils#setFiletype(l:item, l:file)
+    " call myfinder#utils#setFiletype(l:item, l:file)
 
     if has_key(l:item,'bufnr')
       let l:item['text'] .= printf("*")
