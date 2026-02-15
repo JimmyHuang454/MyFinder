@@ -13,8 +13,6 @@ function! myfinder#finders#window#start() abort
           \ 'text': l:text,
           \ 'display': l:text,
           \ 'winid': l:w.winid,
-          \ 'lnum': l:w.winrow,
-          \ 'col': l:w.wincol,
           \ }
     if !empty(l:bufname) && l:bufname != '[No Name]'
         let l:item.path = l:bufname

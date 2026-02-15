@@ -34,7 +34,8 @@ function! myfinder#finders#files#start() abort
   endif
 
   let l:cwd = getcwd()
-  if has_key(g:myfinder_file_cache, l:cwd) && 0
+  let l:use_cache = 0
+  if has_key(g:myfinder_file_cache, l:cwd) && l:use_cache
     let l:files = g:myfinder_file_cache[l:cwd]
   else
     if l:is_git
@@ -49,7 +50,9 @@ function! myfinder#finders#files#start() abort
     else
       let l:files = s:GlobFiles()
     endif
-    let g:myfinder_file_cache[l:cwd] = l:files
+    if l:use_cache
+      let g:myfinder_file_cache[l:cwd] = l:files
+    endif
   endif
 
 
@@ -77,7 +80,7 @@ function! myfinder#finders#files#start() abort
 
     let l:item = {
           \ 'text': l:display_text,
-          \ 'path': l:abs_path,
+          \ 'abs_path': l:abs_path,
           \ }
     " call myfinder#utils#setFiletype(l:item, l:file)
 

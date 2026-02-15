@@ -28,15 +28,17 @@ function! myfinder#utils#GuessFiletype(path) abort
   return get(l:map, l:ext, 'text')
 endfunction
 
-function! myfinder#utils#setFiletype(item, path) abort
-  let l:abs_path = fnamemodify(a:path, ':p')
-  let l:bufnr = bufnr(l:abs_path)
+function! myfinder#utils#setFiletype(item, abs_path) abort
+  let l:bufnr = -1
+  if has_key(a:item, 'bufnr')
+    let l:bufnr = a:item['bufnr']
+  elseif a:abs_path != ''
+    let l:bufnr = bufnr(a:abs_path)
+  endif
   if l:bufnr > 0
     let a:item['bufnr'] = l:bufnr
-    let a:item['is_loaded'] = l:bufnr
     let a:item['filetype'] = getbufvar(l:bufnr, '&filetype')
   else
-    let a:item['is_loaded'] = ''
-    let a:item['filetype'] = myfinder#utils#GuessFiletype(l:abs_path)
+    let a:item['filetype'] = myfinder#utils#GuessFiletype(a:abs_path)
   endif
 endfunction

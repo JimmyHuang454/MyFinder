@@ -23,7 +23,6 @@ function! myfinder#finders#line#start() abort
         \ 'name': 'Lines',
         \ 'display': ['lnum', 'text'],
         \ 'name_color': {'guibg': '#d19a66', 'ctermbg': 3},
-        \ 'filetype': l:ft,
         \ 'preview_enabled': 1,
         \ 'start_time': l:start_time
         \ })
