@@ -1,6 +1,13 @@
 function! myfinder#finders#window#start() abort
   let l:start_time = reltime()
   let l:wins = getwininfo()
+  let l:cur_winid = win_getid()
+  call sort(l:wins, {a, b ->
+        \ a.winid == l:cur_winid ? -1 :
+        \ b.winid == l:cur_winid ? 1 :
+        \ a.tabnr == b.tabnr ? a.winnr - b.winnr :
+        \ a.tabnr - b.tabnr
+        \ })
   let l:items = []
   
   for l:w in l:wins
