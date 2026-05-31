@@ -2,7 +2,11 @@ function! myfinder#finders#window#start() abort
   let l:start_time = reltime()
   let l:wins = getwininfo()
   let l:cur_winid = win_getid()
+  let l:prev_winid = get(s:, 'prev_winid', -1)
+  let s:prev_winid = l:cur_winid
   call sort(l:wins, {a, b ->
+        \ a.winid == l:prev_winid ? -1 :
+        \ b.winid == l:prev_winid ? 1 :
         \ a.winid == l:cur_winid ? -1 :
         \ b.winid == l:cur_winid ? 1 :
         \ a.tabnr == b.tabnr ? a.winnr - b.winnr :

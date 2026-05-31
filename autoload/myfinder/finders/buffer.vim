@@ -18,7 +18,10 @@ endfunction
 function! s:BuildBuffer() abort
   let l:buffers = getbufinfo({'buflisted': 1})
   let l:cur_bufnr = bufnr('%')
+  let l:alt_bufnr = bufnr('#')
   call sort(l:buffers, {a, b ->
+        \ a.bufnr == l:alt_bufnr ? -1 :
+        \ b.bufnr == l:alt_bufnr ? 1 :
         \ a.bufnr == l:cur_bufnr ? -1 :
         \ b.bufnr == l:cur_bufnr ? 1 :
         \ b.lastused - a.lastused
