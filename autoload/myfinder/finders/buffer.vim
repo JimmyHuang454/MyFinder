@@ -17,7 +17,12 @@ endfunction
 
 function! s:BuildBuffer() abort
   let l:buffers = getbufinfo({'buflisted': 1})
-  call sort(l:buffers, {a, b -> b.lastused - a.lastused})
+  let l:cur_bufnr = bufnr('%')
+  call sort(l:buffers, {a, b ->
+        \ a.bufnr == l:cur_bufnr ? -1 :
+        \ b.bufnr == l:cur_bufnr ? 1 :
+        \ b.lastused - a.lastused
+        \ })
   let l:items = []
   for l:buf in l:buffers
     let l:name = empty(l:buf.name) ? '[No Name]' : l:buf.name
