@@ -24,9 +24,11 @@ function! myfinder#finders#coc#diagnostics() abort
     
     let l:item = {
           \ 'text': l:msg,
-          \ 'display': l:display,
-          \ 'path': l:file,
-          \ 'line': l:lnum,
+          \ 'short_file': fnamemodify(l:file, ':t') . ':' .l:lnum,
+          \ 'msg_type': l:severity[0],
+          \ 'abs_path': l:file,
+          \ 'lnum': l:lnum,
+          \ 'msg': l:msg,
           \ 'col': l:col,
           \ 'prefix_len': len(l:display) - len(l:msg),
           \ }
@@ -34,12 +36,13 @@ function! myfinder#finders#coc#diagnostics() abort
   endfor
   
   call myfinder#core#start(l:items, {
-        \ 'open': function('s:OpenDiag'),
-        \ 'preview': function('s:PreviewDiag'),
-        \ 'copy_path': function('s:CopyDiagMsg'),
+        \ 'preview': function('myfinder#actions#preview'),
+        \ 'copy_path': function('myfinder#actions#copy_path'),
+        \ 'copy_msg': function('s:CopyDiagMsg'),
         \ }, { 
         \ 'name': 'Diagnostics',
         \ 'preview_enabled': 1,
+        \ 'display': ['msg_type', 'short_file','text'],
         \ 'syntax': [
         \   {'match': '^[E]', 'link': 'ErrorMsg'},
         \   {'match': '^[W]', 'link': 'WarningMsg'},
@@ -52,7 +55,7 @@ function! myfinder#finders#coc#diagnostics() abort
 endfunction
 
 function! s:CopyDiagMsg() dict
-  let l:msg = get(self.selected, 'text', '')
+  let l:msg = get(self.selected, 'msg', '')
   if !empty(l:msg)
     call setreg('+', l:msg)
     call setreg('*', l:msg)
@@ -196,6 +199,7 @@ function! myfinder#finders#coc#symbols() abort
   let l:items = s:ProcessSymbols(l:symbols, '', 0)
   
   call myfinder#core#start(l:items, {
+        \ 'preview': function('myfinder#actions#preview'),
         \ }, {
         \ 'name': 'Symbols',
         \ 'start_time': l:start_time,
@@ -219,7 +223,7 @@ function! s:ProcessSymbols(symbols, p, level) abort
           \ 'text': l:name,
           \ 'path': expand('%:p'),
           \ 'file_path': expand('%:p'),
-          \ 'line': l:lnum,
+          \ 'lnum': l:lnum,
           \ 'col': l:col,
           \ 'kind': l:kind,
           \ }

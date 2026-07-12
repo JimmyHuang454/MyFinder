@@ -70,17 +70,75 @@ function! myfinder#actions#preview() dict
 
   let l:selected = self.selected
   let l:lines = []
-  let l:lnum = get(l:selected,'lnum', 1)
-  let l:abs_path = s:GetAbsPath(self.selected)
-
+  let l:abs_path = s:GetAbsPath(l:selected)
+  let l:bufnr = has_key(l:selected, 'bufnr') ? l:selected.bufnr : -1
   if has_key(l:selected, 'winid')
-    let l:bufnr = winbufnr(l:selected['winid'])
-    let l:lines = getbufline(l:bufnr, 1, '$')
-  elseif has_key(l:selected, 'bufnr')
-    let l:lines = getbufline(l:selected.bufnr, 1, '$')
+    let l:bufnr = winbufnr(l:selected.winid)
+  elseif l:bufnr <= 0 && !empty(l:abs_path)
+    let l:bufnr = bufnr(l:abs_path)
+  endif
+
+  " Fall back to Vim's last cursor position for a previously opened buffer.
+  let l:has_lnum = has_key(l:selected, 'lnum')
+  let l:lnum = get(l:selected,'lnum', 1)
+  if !l:has_lnum && l:bufnr > 0
+    let l:bufinfo = getbufinfo(l:bufnr)
+    if !empty(l:bufinfo) && get(l:bufinfo[0], 'lnum', 0) > 0
+      let l:lnum = l:bufinfo[0].lnum
+      let l:has_lnum = 1
+    endif
+  endif
+
+  let l:title_parts = []
+  let l:title_path = l:abs_path
+  if empty(l:title_path) && l:bufnr > 0
+    let l:title_path = bufname(l:bufnr)
+  endif
+  if !empty(l:title_path)
+    call add(l:title_parts, fnamemodify(l:title_path, ':p'))
+  endif
+  if l:has_lnum
+    call add(l:title_parts, 'lnum:' . l:lnum)
+  endif
+  let l:winnr = get(l:selected, 'winnr', 0)
+  if l:winnr <= 0 && has_key(l:selected, 'winid')
+    let l:winnr = win_id2win(l:selected.winid)
+  elseif l:winnr <= 0 && l:bufnr > 0
+    let l:bufinfo = getbufinfo(l:bufnr)
+    if !empty(l:bufinfo) && !empty(l:bufinfo[0].windows)
+      let l:winnr = win_id2win(l:bufinfo[0].windows[0])
+    endif
+  endif
+  if l:winnr > 0
+    call add(l:title_parts, 'winnr:' . l:winnr)
+  endif
+  if l:bufnr > 0
+    call add(l:title_parts, 'bufnr:' . l:bufnr)
+  endif
+  call popup_setoptions(self.preview_winid, {
+        \ 'title': empty(l:title_parts) ? ' Preview ' : ' ' . join(l:title_parts, ' | ') . ' '
+        \ })
+
+  let l:preview_lnum = l:lnum
+  let l:start_lnum = 1
+  let l:end_lnum = '$'
+  if l:has_lnum
+    let l:wininfo = getwininfo(self.preview_winid)
+    let l:context = empty(l:wininfo) ? 20 : max([5, l:wininfo[0].height / 2])
+    let l:start_lnum = max([1, l:lnum - l:context])
+    let l:end_lnum = l:lnum + l:context
+    let l:preview_lnum = l:lnum - l:start_lnum + 1
+  endif
+  if l:bufnr > 0 && bufloaded(l:bufnr)
+    let l:lines = getbufline(l:bufnr, l:start_lnum, l:end_lnum)
   else
     if l:abs_path != ''
-      let l:lines = readfile(l:abs_path, '', 500)
+      if l:has_lnum
+        let l:lines = readfile(l:abs_path, '', l:end_lnum)
+        let l:lines = l:lines[l:start_lnum - 1 :]
+      else
+        let l:lines = readfile(l:abs_path, '', 500)
+      endif
     endif
   endif
 
@@ -104,12 +162,12 @@ function! myfinder#actions#preview() dict
     call win_execute(self.preview_winid, 'setlocal filetype=' . l:ft)
   endif
 
-  if l:lnum != 1
+  if l:has_lnum
     call win_execute(self.preview_winid, [
           \ 'call clearmatches()',
           \ 'highlight link FinderPreviewLine Search',
-          \ "call matchaddpos('FinderPreviewLine', [[" . l:lnum . ", 1, " . strlen(get(l:lines, l:lnum - 1, '')) . "]])",
-          \ 'normal! ' . l:lnum . 'G0zz',
+          \ "call matchaddpos('FinderPreviewLine', [[" . l:preview_lnum . ", 1, " . strlen(get(l:lines, l:preview_lnum - 1, '')) . "]])",
+          \ 'normal! ' . l:preview_lnum . 'G0zz',
           \ ])
   endif
 endfunction
