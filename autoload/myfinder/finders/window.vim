@@ -19,12 +19,13 @@ function! myfinder#finders#window#start() abort
     if empty(l:bufname)
       let l:bufname = '[No Name]'
     endif
-    let l:line = l:w.winrow
-    let l:text = printf('%3d:%-3d %s:%d:%d', l:w.tabnr, l:w.winnr, l:bufname, l:line, l:w.wincol)
+    let l:cursor_line = getcurpos(l:w.winid)[1]
+    let l:text = printf('%3d:%-3d %s:%d', l:w.tabnr, l:w.winnr, l:bufname, l:cursor_line)
     let l:item = {
-          \ 'text': l:text,
-          \ 'lnum': l:line,
-          \ 'display': l:text,
+          \ 'text': l:bufname,
+          \ 'lnum': l:cursor_line,
+          \ 'tabid': l:w.tabnr,
+          \ 'winnr': l:w.winnr,
           \ 'winid': l:w.winid,
           \ }
     if !empty(l:bufname) && l:bufname != '[No Name]'
@@ -40,6 +41,7 @@ function! myfinder#finders#window#start() abort
         \ 'open': function('myfinder#actions#open'),
         \ }, {
         \ 'name': 'Windows',
+        \ 'display': ['tabid', 'winnr', 'lnum', 'text'],
         \ 'name_color': {'guibg': '#e06c75', 'ctermbg': 1},
         \ 'start_time': l:start_time
         \ })
