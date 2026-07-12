@@ -20,10 +20,11 @@ function! myfinder#finders#window#start() abort
       let l:bufname = '[No Name]'
     endif
     let l:cursor_line = getcurpos(l:w.winid)[1]
-    let l:text = printf('%3d:%-3d %s:%d', l:w.tabnr, l:w.winnr, l:bufname, l:cursor_line)
+    let l:cursor_col = getcurpos(l:w.winid)[2]
     let l:item = {
           \ 'text': l:bufname,
           \ 'lnum': l:cursor_line,
+          \ 'col': l:cursor_col,
           \ 'tabid': l:w.tabnr,
           \ 'winnr': l:w.winnr,
           \ 'winid': l:w.winid,
