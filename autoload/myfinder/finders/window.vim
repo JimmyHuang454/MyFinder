@@ -19,9 +19,11 @@ function! myfinder#finders#window#start() abort
     if empty(l:bufname)
       let l:bufname = '[No Name]'
     endif
-    let l:text = printf('%3d:%-3d %s:%d:%d', l:w.tabnr, l:w.winnr, l:bufname, l:w.winrow, l:w.wincol)
+    let l:line = l:w.winrow
+    let l:text = printf('%3d:%-3d %s:%d:%d', l:w.tabnr, l:w.winnr, l:bufname, l:line, l:w.wincol)
     let l:item = {
           \ 'text': l:text,
+          \ 'lnum': l:line,
           \ 'display': l:text,
           \ 'winid': l:w.winid,
           \ }
