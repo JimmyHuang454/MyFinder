@@ -1,5 +1,100 @@
 " autoload/myfinder/coc.vim
 
+" --- Navigation ---
+function! s:DecodeUriByte(value) abort
+  return eval('"\\x' . strpart(a:value, 1) . '"')
+endfunction
+
+function! s:UriToPath(uri) abort
+  if a:uri !~# '^file://'
+    return a:uri
+  endif
+  let l:path = substitute(a:uri, '^file://', '', '')
+  return substitute(l:path, '%\x\x', '\=s:DecodeUriByte(submatch(0))', 'g')
+endfunction
+
+function! s:OpenLocation(item) abort
+  execute 'edit ' . fnameescape(a:item.abs_path)
+  call cursor(a:item.lnum, a:item.col)
+  normal! zz
+endfunction
+
+function! s:Locations(action, name) abort
+  if !exists('*CocAction')
+    call myfinder#utils#echo('coc.nvim not installed', 'error')
+    return
+  endif
+
+  try
+    let l:locations = CocAction(a:action)
+  catch
+    call myfinder#utils#echo(v:exception, 'error')
+    return
+  endtry
+  if empty(l:locations) || l:locations == v:null
+    call myfinder#utils#echo('No ' . tolower(a:name) . ' found', 'warn')
+    return
+  endif
+  if type(l:locations) == v:t_dict
+    let l:locations = [l:locations]
+  endif
+
+  let l:items = []
+  for l:location in l:locations
+    let l:uri = get(l:location, 'uri', get(l:location, 'targetUri', ''))
+    let l:range = get(l:location, 'range', get(l:location, 'targetSelectionRange', {}))
+    let l:start = get(l:range, 'start', {})
+    let l:path = s:UriToPath(l:uri)
+    let l:lnum = get(l:start, 'line', 0) + 1
+    let l:col = get(l:start, 'character', 0) + 1
+    let l:text = ''
+    if filereadable(l:path)
+      let l:file_lines = readfile(l:path, '', l:lnum)
+      let l:text = substitute(get(l:file_lines, l:lnum - 1, ''), '^\s*', '', '')
+    endif
+    call add(l:items, {
+          \ 'text': l:text,
+          \ 'short_file': fnamemodify(l:path, ':t') . ':' . l:lnum . ':' . l:col,
+          \ 'abs_path': l:path,
+          \ 'lnum': l:lnum,
+          \ 'col': l:col,
+          \ })
+  endfor
+
+  if len(l:items) == 1
+    call s:OpenLocation(l:items[0])
+    return
+  endif
+  call myfinder#core#start(l:items, {
+        \ 'preview': function('myfinder#actions#preview'),
+        \ }, {
+        \ 'name': a:name,
+        \ 'display': ['short_file', 'text'],
+        \ 'columns_hl': ['Directory', 'Identifier'],
+        \ 'preview_enabled': 1,
+        \ })
+endfunction
+
+function! myfinder#finders#coc#definition() abort
+  call s:Locations('definitions', 'Definitions')
+endfunction
+
+function! myfinder#finders#coc#declaration() abort
+  call s:Locations('declarations', 'Declarations')
+endfunction
+
+function! myfinder#finders#coc#type_definition() abort
+  call s:Locations('typeDefinitions', 'TypeDefinitions')
+endfunction
+
+function! myfinder#finders#coc#implementation() abort
+  call s:Locations('implementations', 'Implementations')
+endfunction
+
+function! myfinder#finders#coc#references() abort
+  call s:Locations('references', 'References')
+endfunction
+
 " --- Diagnostics ---
 function! myfinder#finders#coc#diagnostics() abort
   if !exists('*CocAction')
