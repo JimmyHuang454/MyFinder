@@ -1,5 +1,76 @@
 " autoload/myfinder/coc.vim
 
+if !exists('g:myfinder_coc_timeout')
+  let g:myfinder_coc_timeout = 5000
+endif
+
+function! s:RequestTick(state, timer) abort
+  if a:state.done
+    call timer_stop(a:timer)
+    return
+  endif
+  let l:elapsed = reltimefloat(reltime(a:state.start_time))
+  if g:myfinder_coc_timeout > 0 && l:elapsed * 1000 >= g:myfinder_coc_timeout
+    let a:state.done = 1
+    call timer_stop(a:timer)
+    redraw
+    call myfinder#utils#echo(printf('%s timed out after %.3fs', a:state.label, l:elapsed), 'error')
+    return
+  endif
+  redraw
+  echohl MoreMsg
+  echon printf('[MyFinder] %s... %.3fs', a:state.label, l:elapsed)
+  echohl None
+endfunction
+
+function! s:RequestDone(state, err, result) abort
+  if a:state.done
+    return
+  endif
+  let l:elapsed = reltimefloat(reltime(a:state.start_time))
+  if g:myfinder_coc_timeout > 0 && l:elapsed * 1000 >= g:myfinder_coc_timeout
+    let a:state.done = 1
+    call timer_stop(a:state.timer)
+    redraw
+    call myfinder#utils#echo(printf('%s timed out after %.3fs', a:state.label, l:elapsed), 'error')
+    return
+  endif
+  let a:state.done = 1
+  call timer_stop(a:state.timer)
+  redraw
+  echo ''
+  if !empty(a:err)
+    call myfinder#utils#echo(a:state.label . ': ' . string(a:err), 'error')
+    return
+  endif
+  call call(a:state.callback, [a:result, a:state.start_time])
+endfunction
+
+function! s:CocRequest(action, args, label, Callback) abort
+  if !exists('*CocAction')
+    call myfinder#utils#echo('coc.nvim not installed', 'error')
+    return
+  endif
+  let l:state = {
+        \ 'done': 0,
+        \ 'label': a:label,
+        \ 'start_time': reltime(),
+        \ 'callback': a:Callback,
+        \ 'timer': -1,
+        \ }
+  let l:state.timer = timer_start(100, function('s:RequestTick', [l:state]), {'repeat': -1})
+  try
+    if exists('*CocActionAsync')
+      call call('CocActionAsync', [a:action] + a:args + [function('s:RequestDone', [l:state])])
+    else
+      let l:result = call('CocAction', [a:action] + a:args)
+      call s:RequestDone(l:state, v:null, l:result)
+    endif
+  catch
+    call s:RequestDone(l:state, v:exception, v:null)
+  endtry
+endfunction
+
 " --- Navigation ---
 function! s:DecodeUriByte(value) abort
   return eval('"\\x' . strpart(a:value, 1) . '"')
@@ -20,19 +91,13 @@ function! s:OpenLocation(item) abort
 endfunction
 
 function! s:Locations(action, name) abort
-  if !exists('*CocAction')
-    call myfinder#utils#echo('coc.nvim not installed', 'error')
-    return
-  endif
+  call s:CocRequest(a:action, [], a:name, function('s:ShowLocations', [a:name]))
+endfunction
 
-  try
-    let l:locations = CocAction(a:action)
-  catch
-    call myfinder#utils#echo(v:exception, 'error')
-    return
-  endtry
+function! s:ShowLocations(name, locations, start_time) abort
+  let l:locations = a:locations
   if empty(l:locations) || l:locations == v:null
-    call myfinder#utils#echo('No ' . tolower(a:name) . ' found', 'warn')
+    call myfinder#utils#echo(printf('No %s found [%.3fs]', tolower(a:name), reltimefloat(reltime(a:start_time))), 'warn')
     return
   endif
   if type(l:locations) == v:t_dict
@@ -63,6 +128,7 @@ function! s:Locations(action, name) abort
 
   if len(l:items) == 1
     call s:OpenLocation(l:items[0])
+    call myfinder#utils#echo(printf('%s opened [%.3fs]', a:name, reltimefloat(reltime(a:start_time))), 'success')
     return
   endif
   call myfinder#core#start(l:items, {
@@ -72,6 +138,7 @@ function! s:Locations(action, name) abort
         \ 'display': ['short_file', 'text'],
         \ 'columns_hl': ['Directory', 'Identifier'],
         \ 'preview_enabled': 1,
+        \ 'start_time': a:start_time,
         \ })
 endfunction
 
@@ -97,11 +164,11 @@ endfunction
 
 " --- Diagnostics ---
 function! myfinder#finders#coc#diagnostics() abort
-  if !exists('*CocAction')
-    call myfinder#utils#echo('coc.nvim not installed', 'error')
-    return
-  endif
-  let l:diags = CocAction('diagnosticList')
+  call s:CocRequest('diagnosticList', [], 'Diagnostics', function('s:ShowDiagnostics'))
+endfunction
+
+function! s:ShowDiagnostics(diags, start_time) abort
+  let l:diags = a:diags
   if empty(l:diags)
     call myfinder#utils#echo('No diagnostics found', 'warn')
     return
@@ -136,6 +203,7 @@ function! myfinder#finders#coc#diagnostics() abort
         \ 'copy_msg': function('s:CopyDiagMsg'),
         \ }, { 
         \ 'name': 'Diagnostics',
+        \ 'start_time': a:start_time,
         \ 'preview_enabled': 1,
         \ 'display': ['msg_type', 'short_file','text'],
         \ 'syntax': [
@@ -162,11 +230,11 @@ endfunction
 
 " --- Commands ---
 function! myfinder#finders#coc#commands() abort
-  if !exists('*CocAction')
-     call myfinder#utils#echo('coc.nvim not installed', 'error')
-     return
-  endif
-  let l:cmds = CocAction('commands')
+  call s:CocRequest('commands', [], 'Commands', function('s:ShowCommands'))
+endfunction
+
+function! s:ShowCommands(cmds, start_time) abort
+  let l:cmds = a:cmds
   let l:items = []
   
   for l:cmd in l:cmds
@@ -188,6 +256,7 @@ function! myfinder#finders#coc#commands() abort
         \ 'open': function('s:RunCommand'),
         \ }, {
         \ 'name': 'Commands',
+        \ 'start_time': a:start_time,
         \ 'display': ['text', 'title'],
         \ 'match_item': 'text',
         \ 'columns_hl': ['Type', 'Comment'],
@@ -197,45 +266,27 @@ endfunction
 
 function! s:RunCommand() dict
   call self.quit()
-  if exists('*CocAction')
-    call CocAction('runCommand', self.selected.command)
-  else
-    execute 'CocCommand ' . self.selected.command
-  endif
+  call s:CocRequest('runCommand', [self.selected.command], 'Command ' . self.selected.command, function('s:ActionFinished'))
+endfunction
+
+function! s:ActionFinished(result, start_time) abort
+  call myfinder#utils#echo(printf('Completed in %.3fs', reltimefloat(reltime(a:start_time))), 'success')
 endfunction
 
 " --- Extensions ---
 function! myfinder#finders#coc#extensions() abort
-  let l:start_time = reltime()
-  if !exists('*CocAction')
-    call myfinder#utils#echo('coc.nvim not installed', 'error')
-    return
-  endif
-  let l:exts = CocAction('extensionStats')
+  call s:CocRequest('extensionStats', [], 'Extensions', function('s:ShowExtensions'))
+endfunction
+
+function! s:ShowExtensions(exts, start_time) abort
+  let l:exts = a:exts
   if empty(l:exts)
     call myfinder#utils#echo('No extensions found', 'warn')
     return
   endif
   
 
-  let l:items = []
-  for l:e in l:exts
-    let l:state = get(l:e, 'state', 'unknown')
-    let l:id = get(l:e, 'id', '')
-    let l:version = get(l:e, 'version', '')
-    let l:root = get(l:e, 'root', '')
-    
-    let l:state_icon = l:state ==# 'activated' ? '*' : (l:state ==# 'disabled' ? 'x' : '-')
-    
-    call add(l:items, {
-          \ 'text': l:id,
-          \ 'state_icon': l:state_icon,
-          \ 'version': l:version,
-          \ 'state': l:state,
-          \ 'root': l:root,
-          \ })
-  endfor
-  
+  let l:items = s:BuildExtItems(l:exts)
   call myfinder#core#start(l:items, {
         \ 'open': function('s:ToggleExt'),
         \ 'delete': function('s:UninstallExt'),
@@ -243,7 +294,7 @@ function! myfinder#finders#coc#extensions() abort
         \ 'name': 'Extensions',
         \ 'display': ['state_icon','text','version','root'],
         \ 'columns_hl': ['', 'Type', 'Number', 'Directory'],
-        \ 'start_time': l:start_time,
+        \ 'start_time': a:start_time,
         \ 'actions': {
         \   'toggle': function('s:ToggleExt'),
         \   'uninstall': function('s:UninstallExt'),
@@ -256,22 +307,43 @@ function! myfinder#finders#coc#extensions() abort
         \ })
 endfunction
 
+function! s:BuildExtItems(exts) abort
+  let l:items = []
+  for l:e in l:exts
+    let l:state = get(l:e, 'state', 'unknown')
+    let l:id = get(l:e, 'id', '')
+    let l:version = get(l:e, 'version', '')
+    let l:root = get(l:e, 'root', '')
+
+    let l:state_icon = l:state ==# 'activated' ? '*' : (l:state ==# 'disabled' ? 'x' : '-')
+
+    call add(l:items, {
+          \ 'text': l:id,
+          \ 'state_icon': l:state_icon,
+          \ 'version': l:version,
+          \ 'state': l:state,
+          \ 'root': l:root,
+          \ })
+  endfor
+  return l:items
+endfunction
+
 function! s:ToggleExt() dict
-  let l:id = self.selected.id
-  call CocAction('toggleExtension', l:id)
-  " Small delay to allow coc to update state
-  call timer_start(100, {-> s:RefreshExts(self)})
+  let l:id = self.selected.text
+  call s:CocRequest('toggleExtension', [l:id], 'Toggle ' . l:id, function('s:AfterExtensionChange', [self]))
 endfunction
 
 function! s:UninstallExt() dict
-  let l:id = self.selected.id
-  call CocAction('uninstallExtension', l:id)
-  call timer_start(100, {-> s:RefreshExts(self)})
+  let l:id = self.selected.text
+  call s:CocRequest('uninstallExtension', [l:id], 'Uninstall ' . l:id, function('s:AfterExtensionChange', [self]))
 endfunction
 
-function! s:RefreshExts(ctx) abort
-  let l:exts = CocAction('extensionStats')
-  let l:items = s:BuildExtItems(l:exts)
+function! s:AfterExtensionChange(ctx, result, start_time) abort
+  call s:CocRequest('extensionStats', [], 'Refresh Extensions', function('s:RefreshExts', [a:ctx]))
+endfunction
+
+function! s:RefreshExts(ctx, exts, start_time) abort
+  let l:items = s:BuildExtItems(a:exts)
   let a:ctx.items = l:items
   let a:ctx.matches = l:items
   let a:ctx.filter = ''
@@ -280,12 +352,11 @@ endfunction
 
 " --- Symbols (Document) ---
 function! myfinder#finders#coc#symbols() abort
-  let l:start_time = reltime()
-  if !exists('*CocAction')
-    call myfinder#utils#echo('coc.nvim not installed', 'error')
-    return
-  endif
-  let l:symbols = CocAction('documentSymbols')
+  call s:CocRequest('documentSymbols', [], 'Symbols', function('s:ShowSymbols'))
+endfunction
+
+function! s:ShowSymbols(symbols, start_time) abort
+  let l:symbols = a:symbols
   if empty(l:symbols) || l:symbols == v:null
     call myfinder#utils#echo('No symbols found', 'warn')
     return
@@ -297,8 +368,8 @@ function! myfinder#finders#coc#symbols() abort
         \ 'preview': function('myfinder#actions#preview'),
         \ }, {
         \ 'name': 'Symbols',
-        \ 'start_time': l:start_time,
-        \ 'display': ['line', 'kind', 'text'],
+        \ 'start_time': a:start_time,
+        \ 'display': ['lnum', 'kind', 'text'],
         \ 'columns_hl': ['Number', 'Type', 'Identifier'],
         \ 'preview_enabled': 1,
         \ })
@@ -365,18 +436,17 @@ endfunction
 
 " --- Symbols (Workspace) ---
 function! myfinder#finders#coc#workspace_symbols() abort
-  if !exists('*CocAction')
-    call myfinder#utils#echo('coc.nvim not installed', 'error')
-    return
-  endif
-  
   " This requires user input for query
   let l:query = input('Workspace Symbols: ')
   if empty(l:query)
     return
   endif
   
-  let l:symbols = CocAction('workspaceSymbols', l:query)
+  call s:CocRequest('getWorkspaceSymbols', [l:query], 'WorkspaceSymbols', function('s:ShowWorkspaceSymbols'))
+endfunction
+
+function! s:ShowWorkspaceSymbols(symbols, start_time) abort
+  let l:symbols = a:symbols
   if empty(l:symbols)
     call myfinder#utils#echo('No symbols found', 'warn')
     return
@@ -386,17 +456,20 @@ function! myfinder#finders#coc#workspace_symbols() abort
   for l:sym in l:symbols
     let l:name = get(l:sym, 'name', '')
     let l:kind = get(l:sym, 'kind', 'Unknown')
-    let l:path = get(l:sym, 'filepath', '')
-    let l:lnum = get(l:sym, 'lnum', 1)
-    let l:col = get(l:sym, 'col', 1)
+    let l:location = get(l:sym, 'location', {})
+    let l:path = get(l:sym, 'filepath', s:UriToPath(get(l:location, 'uri', '')))
+    let l:range = get(l:location, 'range', {})
+    let l:start = get(l:range, 'start', {})
+    let l:lnum = get(l:sym, 'lnum', get(l:start, 'line', 0) + 1)
+    let l:col = get(l:sym, 'col', get(l:start, 'character', 0) + 1)
     
     let l:display = printf('%-20s [%s] %s:%d', l:name, l:kind, fnamemodify(l:path, ':t'), l:lnum)
     
     let l:item = {
           \ 'text': l:name,
           \ 'display': l:display,
-          \ 'path': l:path,
-          \ 'line': l:lnum,
+          \ 'abs_path': l:path,
+          \ 'lnum': l:lnum,
           \ 'col': l:col,
           \ 'kind': l:kind,
           \ 'prefix_len': len(l:display) - len(l:name),
@@ -405,8 +478,10 @@ function! myfinder#finders#coc#workspace_symbols() abort
   endfor
   
   call myfinder#core#start(l:items, {
+        \ 'preview': function('myfinder#actions#preview'),
         \ }, {
         \ 'name': 'WorkspaceSymbols',
+        \ 'start_time': a:start_time,
         \ 'preview_enabled': 1,
         \ 'syntax': [
         \   {'match': '\%>2l^.\{-20\}', 'link': 'Identifier'},
