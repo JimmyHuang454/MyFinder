@@ -475,6 +475,19 @@ function! s:BuildContent(ctx) abort
   return l:content
 endfunction
 
+function! myfinder#core#_match_byte_span(text, char_idx) abort
+  let l:byte_idx = byteidx(a:text, a:char_idx)
+  if l:byte_idx < 0
+    return []
+  endif
+
+  let l:next_byte_idx = byteidx(a:text, a:char_idx + 1)
+  if l:next_byte_idx < 0
+    let l:next_byte_idx = strlen(a:text)
+  endif
+  return [l:byte_idx, l:next_byte_idx - l:byte_idx]
+endfunction
+
 function! s:ApplyHighLights(ctx) abort
   call win_execute(a:ctx.winid, 'call clearmatches()')
   
@@ -595,8 +608,18 @@ function! s:ApplyHighLights(ctx) abort
     if has_key(a:ctx, 'match_positions')
       let l:pos_list = a:ctx.match_positions[i]
       let l:hl_positions = []
-      for l:byte_idx in l:pos_list
-          call add(l:hl_positions, [l:line_num, l:byte_idx + 1 + l:offset, 1])
+      let l:match_text = get(l:item, get(a:ctx, 'match_item', ''), '')
+      for l:char_idx in l:pos_list
+        " matchfuzzypos() returns character indexes, while matchaddpos()
+        " expects byte columns and byte lengths.  Convert both values so
+        " multibyte characters before or at a match don't shift highlighting.
+        let l:span = myfinder#core#_match_byte_span(l:match_text, l:char_idx)
+        if empty(l:span)
+          continue
+        endif
+        if l:span[1] > 0
+          call add(l:hl_positions, [l:line_num, l:span[0] + 1 + l:offset, l:span[1]])
+        endif
       endfor
       
       if !empty(l:hl_positions)
