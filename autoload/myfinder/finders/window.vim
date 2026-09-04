@@ -42,6 +42,7 @@ function! myfinder#finders#window#start() abort
         \ 'open': function('myfinder#actions#open'),
         \ }, {
         \ 'name': 'Windows',
+        \ 'preview_enabled': 1,
         \ 'display': ['tabid', 'winnr', 'lnum', 'text'],
         \ 'name_color': {'guibg': '#e06c75', 'ctermbg': 1},
         \ 'start_time': l:start_time
