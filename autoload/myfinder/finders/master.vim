@@ -15,6 +15,7 @@ function! myfinder#finders#master#start() abort
         \ {'text': 'Files',   'cmd': 'FinderFiles',   'help': 'Find files (Smart Git detection)'},
         \ {'text': 'GitLog',  'cmd': 'FinderGitLog',  'help': 'Search git log'},
         \ {'text': 'GitDiff', 'cmd': 'FinderGitDiff', 'help': 'Files changed by a commit'},
+        \ {'text': 'GitStatus', 'cmd': 'FinderGitStatus', 'help': 'Staged, unstaged and untracked files with diff'},
         \ {'text': 'Rg',      'cmd': 'FinderRg',      'help': 'Search with ripgrep'},
         \ {'text': 'Colorscheme',  'cmd': 'FinderColorscheme',  'help': 'Choose and preview color schemes'},
         \ {'text': 'History', 'cmd': 'FinderHistory', 'help': 'Vim command history'},

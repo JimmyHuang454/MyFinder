@@ -1,6 +1,13 @@
-" Files changed by a commit: status, +added -deleted lines, with a diff preview.
-" <CR> opens a two-window diff (left: parent, right: commit) in the shared diff
-" tab (see myfinder#difftab) while this finder stays alive. In the diff tab
+" Changed files with a diff preview: status, +added -deleted lines.
+"
+"   :FinderGitDiff [commit]    files changed by a commit (default: the commit
+"                              under the cursor, otherwise ask)
+"   :FinderGitDiff staged      staged changes   (HEAD     vs index)
+"   :FinderGitDiff unstaged    unstaged changes (index    vs work tree)
+"   :FinderGitStatus           staged + unstaged + untracked, tagged S / U / ?
+"
+" <CR> opens a two-window diff (left: old, right: new) in the shared diff tab
+" (see myfinder#difftab) while this finder stays alive. In the diff tab
 " ]f / [f jump to the next / previous changed file; q / gF / :q leave diff mode
 " and return to this finder.
 "
@@ -99,6 +106,36 @@ function! s:ParseFiles(lines) abort
   return map(l:order, 'l:by_path[v:val]')
 endfunction
 
+function! s:StatText(f) abort
+  if a:f.add ==# '?'
+    return ['   new', '']
+  endif
+  return [printf('%6s', a:f.add ==# '-' ? 'bin' : '+' . a:f.add),
+        \ printf('%6s', a:f.del ==# '-' ? 'bin' : '-' . a:f.del)]
+endfunction
+
+" Objects of both sides of the diff of one file ('' = no such side,
+" 'worktree' = the file on disk, otherwise <rev>:<path> for git / fugitive)
+function! s:Sides(kind, sha, has_parent, f) abort
+  let l:file = a:f.file
+  let l:st = a:f.status
+  if a:kind ==# 'commit'
+    return [(l:st ==# 'A' || !a:has_parent) ? '' : a:sha . '^:' . l:file,
+          \ l:st ==# 'D' ? '' : a:sha . ':' . l:file]
+  elseif a:kind ==# 'staged'
+    return [l:st ==# 'A' ? '' : 'HEAD:' . l:file, l:st ==# 'D' ? '' : ':0:' . l:file]
+  elseif a:kind ==# 'unstaged'
+    return [l:st ==# 'A' ? '' : ':0:' . l:file, l:st ==# 'D' ? '' : 'worktree']
+  endif
+  return ['', 'worktree']
+endfunction
+
+function! s:Collect(root, kind) abort
+  let l:args = a:kind ==# 'staged' ? ['diff', '--cached'] : ['diff']
+  return s:ParseFiles(s:Git(a:root, l:args + ['--raw', '--numstat', '--no-renames', '--no-color']))
+endfunction
+
+" arg: '' (cursor / ask), 'staged', 'unstaged', 'status' or a commit
 function! myfinder#finders#git_diff#start(...) abort
   let l:start_time = reltime()
   if !executable('git')
@@ -111,48 +148,82 @@ function! myfinder#finders#git_diff#start(...) abort
     return
   endif
 
-  let l:rev = a:0 > 0 ? a:1 : ''
-  if l:rev ==# ''
-    let l:rev = s:RevAtCursor()
+  let l:arg = a:0 > 0 ? a:1 : ''
+  let l:sha = ''
+  let l:files = []
+  let l:name = ''
+  if l:arg =~# '^\%(staged\|cached\)$'
+    let l:mode = 'staged'
+    let l:name = 'Staged changes'
+    let l:files = map(s:Collect(l:root, 'staged'), 'extend(v:val, {"kind": "staged", "stage": "S"})')
+  elseif l:arg ==# 'unstaged'
+    let l:mode = 'unstaged'
+    let l:name = 'Unstaged changes'
+    let l:files = map(s:Collect(l:root, 'unstaged'), 'extend(v:val, {"kind": "unstaged", "stage": "U"})')
+  elseif l:arg =~# '^\%(status\|worktree\)$'
+    let l:mode = 'status'
+    let l:name = 'Working tree'
+    let l:files = map(s:Collect(l:root, 'staged'), 'extend(v:val, {"kind": "staged", "stage": "S"})')
+    call extend(l:files, map(s:Collect(l:root, 'unstaged'), 'extend(v:val, {"kind": "unstaged", "stage": "U"})'))
+    for l:path in s:Git(l:root, ['ls-files', '--others', '--exclude-standard'])
+      call add(l:files, {'file': l:path, 'status': '?', 'add': '?', 'del': '?', 'kind': 'untracked', 'stage': '?'})
+    endfor
+  else
+    let l:mode = 'commit'
+    let l:rev = l:arg
+    if l:rev ==# ''
+      let l:rev = s:RevAtCursor()
+    endif
+    if l:rev ==# ''
+      let l:rev = input('Commit: ', 'HEAD')
+    endif
+    let l:sha = s:Git(l:root, ['rev-parse', '--verify', '-q', l:rev . '^{commit}'])
+    if empty(l:sha)
+      call myfinder#utils#echo('Not a commit: ' . l:rev, 'error')
+      return
+    endif
+    let l:sha = l:sha[0]
+    let l:name = get(s:Git(l:root, ['log', '-1', '--format=%h %s', l:sha]), 0, l:sha)
+    let l:files = map(s:ParseFiles(s:Git(l:root, ['show', '--raw', '--numstat', '--format=',
+          \ '--no-renames', '-m', '--first-parent', '--no-color', l:sha])),
+          \ 'extend(v:val, {"kind": "commit", "stage": ""})')
   endif
-  if l:rev ==# ''
-    let l:rev = input('Commit: ', 'HEAD')
-  endif
-  let l:sha = s:Git(l:root, ['rev-parse', '--verify', '-q', l:rev . '^{commit}'])
-  if empty(l:sha)
-    call myfinder#utils#echo('Not a commit: ' . l:rev, 'error')
-    return
-  endif
-  let l:sha = l:sha[0]
-
-  let l:files = s:ParseFiles(s:Git(l:root, ['show', '--raw', '--numstat', '--format=',
-        \ '--no-renames', '-m', '--first-parent', '--no-color', l:sha]))
   if empty(l:files)
-    call myfinder#utils#echo('No changed files in ' . l:rev, 'warn')
+    call myfinder#utils#echo('No changes: ' . (l:arg ==# '' ? l:sha[:6] : l:arg), 'warn')
     return
   endif
 
   call s:Highlight()
+  let l:has_parent = l:sha ==# '' ? 1 : !empty(s:Git(l:root, ['rev-parse', '--verify', '-q', l:sha . '^']))
   let s:pending = {
         \ 'sha': l:sha,
+        \ 'label': l:sha ==# '' ? l:name : l:sha[:6],
         \ 'root': l:root,
         \ 'gitdir': exists('*FugitiveGitDir') ? FugitiveGitDir() : '',
-        \ 'has_parent': !empty(s:Git(l:root, ['rev-parse', '--verify', '-q', l:sha . '^'])),
         \ 'files': l:files,
         \ }
 
   let l:items = []
   for l:i in range(len(l:files))
     let l:f = l:files[l:i]
+    let l:f.sides = s:Sides(l:f.kind, l:sha, l:has_parent, l:f)
+    let l:stat = s:StatText(l:f)
     call add(l:items, {
           \ 'text': l:f.file,
           \ 'idx': l:i,
+          \ 'stage': l:f.stage,
           \ 'status': l:f.status,
-          \ 'stat_add': printf('%6s', l:f.add ==# '-' ? 'bin' : '+' . l:f.add),
-          \ 'stat_del': printf('%6s', l:f.del ==# '-' ? 'bin' : '-' . l:f.del),
+          \ 'stat_add': l:stat[0],
+          \ 'stat_del': l:stat[1],
           \ })
   endfor
 
+  let l:display = ['status', 'stat_add', 'stat_del', 'text']
+  let l:hl = ['MyFinderDiffStat', 'MyFinderDiffAdd', 'MyFinderDiffDel', '']
+  if l:mode ==# 'status'
+    let l:display = ['stage'] + l:display
+    let l:hl = ['MyFinderDiffIdx'] + l:hl
+  endif
   call myfinder#core#start(l:items, {
         \ 'open': function('s:Open'),
         \ 'open_with_new_tab': function('s:Open'),
@@ -160,9 +231,9 @@ function! myfinder#finders#git_diff#start(...) abort
         \ 'open_horizontally': function('s:Open'),
         \ 'preview': function('s:Preview'),
         \ }, {
-        \ 'name': get(s:Git(l:root, ['log', '-1', '--format=%h %s', l:sha]), 0, l:sha),
-        \ 'display': ['status', 'stat_add', 'stat_del', 'text'],
-        \ 'columns_hl': ['MyFinderDiffStat', 'MyFinderDiffAdd', 'MyFinderDiffDel', ''],
+        \ 'name': l:name,
+        \ 'display': l:display,
+        \ 'columns_hl': l:hl,
         \ 'status': 'Git',
         \ 'start_time': l:start_time,
         \ })
@@ -183,25 +254,40 @@ function! s:Preview() dict
     return
   endif
   let l:f = s:pending.files[self.selected.idx]
-  let l:lines = s:Git(s:pending.root, ['show', '--format=', '--no-renames', '-m',
-        \ '--first-parent', '--no-color', s:pending.sha, '--', l:f.file])
+  let l:ft = 'diff'
+  if l:f.kind ==# 'commit'
+    let l:lines = s:Git(s:pending.root, ['show', '--format=', '--no-renames', '-m',
+          \ '--first-parent', '--no-color', s:pending.sha, '--', l:f.file])
+  elseif l:f.kind ==# 'staged'
+    let l:lines = s:Git(s:pending.root, ['diff', '--cached', '--no-renames', '--no-color', '--', l:f.file])
+  elseif l:f.kind ==# 'unstaged'
+    let l:lines = s:Git(s:pending.root, ['diff', '--no-renames', '--no-color', '--', l:f.file])
+  else
+    " untracked: show the file itself
+    let l:path = s:pending.root . '/' . l:f.file
+    let l:lines = filereadable(l:path) ? readfile(l:path, '', 300) : []
+    let l:ft = ''
+  endif
   call popup_settext(self.preview_winid, empty(l:lines) ? ['No preview available'] : l:lines)
   call popup_setoptions(self.preview_winid, {'title': ' ' . l:f.file . ' '})
-  call win_execute(self.preview_winid, 'setlocal filetype=diff')
+  call win_execute(self.preview_winid, 'setlocal filetype=' . l:ft)
 endfunction
 
-" Open one side of the diff in the current window.
+" Open one side of the diff in the current window. obj: see s:Sides().
 " With fugitive it is a regular fugitive:// buffer, otherwise a scratch buffer.
-function! s:Edit(state, rev, file) abort
+function! s:Edit(state, obj, file) abort
+  if a:obj ==# 'worktree'
+    execute 'silent edit ' . fnameescape(a:state.root . '/' . a:file)
+    return
+  endif
   if exists('*FugitiveFind') && a:state.gitdir !=# ''
-    execute 'silent edit ' . fnameescape(FugitiveFind(a:rev . ':' . a:file, a:state.gitdir))
+    execute 'silent edit ' . fnameescape(FugitiveFind(a:obj, a:state.gitdir))
     return
   endif
   enew
-  let l:lines = s:Git(a:state.root, ['show', a:rev . ':' . a:file])
-  call setline(1, l:lines)
+  call setline(1, s:Git(a:state.root, ['show', a:obj]))
   setlocal buftype=nofile bufhidden=wipe noswapfile nomodifiable
-  execute 'file ' . fnameescape(substitute(a:rev, '^\(\x\{7}\)\x*', '\1', '') . ':' . a:file)
+  execute 'file ' . fnameescape(substitute(a:obj, '^\(\x\{7}\)\x*', '\1', ''))
   execute 'silent! doautocmd filetypedetect BufRead ' . fnameescape(a:file)
 endfunction
 
@@ -220,38 +306,40 @@ function! s:Show(state, idx, ctx) abort
   call myfinder#difftab#open(function('s:Setup', [a:state, a:idx]), l:opts)
 endfunction
 
-" Build the diff windows in the current (diff) tab: left = parent, right = commit
+" Build the diff windows in the current (diff) tab: left = old, right = new
 function! s:Setup(state, idx) abort
   let l:f = a:state.files[a:idx]
-  let l:sha = a:state.sha
+  let [l:left, l:right] = l:f.sides
   let t:myfinder_git_diff = {'state': a:state, 'idx': a:idx}
 
-  if l:f.status ==# 'D'
-    call s:Edit(a:state, l:sha . '^', l:f.file)
-  elseif l:f.status ==# 'A' || !a:state.has_parent
-    call s:Edit(a:state, l:sha, l:f.file)
+  if l:left ==# ''
+    call s:Edit(a:state, l:right, l:f.file)
+  elseif l:right ==# ''
+    call s:Edit(a:state, l:left, l:f.file)
   else
-    call s:Edit(a:state, l:sha, l:f.file)
+    call s:Edit(a:state, l:right, l:f.file)
     diffthis
     leftabove vertical new
-    call s:Edit(a:state, l:sha . '^', l:f.file)
+    call s:Edit(a:state, l:left, l:f.file)
     diffthis
     wincmd l
     silent! normal! gg]czz
   endif
 
-  let l:stat_grp = get({'A': 'MyFinderDiffAdd', 'D': 'MyFinderDiffDel'}, l:f.status, 'MyFinderDiffStat')
+  let l:stat_grp = get({'A': 'MyFinderDiffAdd', 'D': 'MyFinderDiffDel', '?': 'MyFinderDiffAdd'}, l:f.status, 'MyFinderDiffStat')
   let l:dir = fnamemodify(l:f.file, ':h')
+  let l:stat = s:StatText(l:f)
   let l:parts = [
         \ [printf('[%d/%d] ', a:idx + 1, len(a:state.files)), 'MyFinderDiffIdx'],
+        \ [l:f.stage ==# '' ? '' : l:f.stage . ' ', 'MyFinderDiffIdx'],
         \ [l:f.status . '  ', l:stat_grp],
         \ [l:dir ==# '.' ? '' : l:dir . '/', 'MyFinderDiffSha'],
         \ [fnamemodify(l:f.file, ':t'), 'MyFinderDiffFile'],
-        \ ['   ', 'None'],
-        \ [l:f.add ==# '-' ? 'bin' : '+' . l:f.add, 'MyFinderDiffAdd'],
+        \ ['  ', 'None'],
+        \ [trim(l:stat[0]), 'MyFinderDiffAdd'],
         \ [' ', 'None'],
-        \ [l:f.del ==# '-' ? '' : '-' . l:f.del, 'MyFinderDiffDel'],
-        \ ['   ' . l:sha[:6], 'MyFinderDiffSha'],
+        \ [trim(l:stat[1]), 'MyFinderDiffDel'],
+        \ ['   ' . a:state.label, 'MyFinderDiffSha'],
         \ ]
   " The finder reports "Action completed" right after its callback returns and
   " would overwrite this message, so show it a moment later.
