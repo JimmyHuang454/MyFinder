@@ -807,6 +807,22 @@ function! s:HideCursor(ctx) abort
   endif
 endfunction
 
+" Let a finder be left temporarily (e.g. to a diff tab) and resumed later.
+function! myfinder#core#suspend(ctx) abort
+  call s:RestoreCursor(a:ctx)
+endfunction
+
+function! myfinder#core#resume(ctx) abort
+  if empty(popup_getpos(a:ctx.winid))
+    return
+  endif
+  " Hide the cursor again without overwriting the saved values
+  set t_ve=
+  if has('gui_running') || &termguicolors || exists('$TERM_PROGRAM')
+    set guicursor+=a:Ignore
+  endif
+endfunction
+
 function! s:RestoreCursor(ctx) abort
   " Restore terminal cursor
   if has_key(a:ctx, 'save_t_ve')

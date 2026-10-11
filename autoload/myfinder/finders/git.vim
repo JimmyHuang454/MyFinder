@@ -36,6 +36,7 @@ function! myfinder#finders#git#log() abort
         \ 'open_with_new_tab': function('s:ShowTab'),
         \ 'open_vertically': function('s:ShowRight'),
         \ 'open_horizontally': function('s:ShowHorizontal'),
+        \ 'files': function('s:Files'),
         \ }, {
         \ 'name': 'Git Log',
         \ 'syntax': [
@@ -46,6 +47,12 @@ function! myfinder#finders#git#log() abort
         \ 'status': 'Git',
         \ 'start_time': l:start_time
         \ })
+endfunction
+
+" Changed files of the selected commit (map it with g:myfinder_mappings)
+function! s:Files() dict
+  call self.quit()
+  call myfinder#finders#git_diff#start(self.selected.hash)
 endfunction
 
 function! s:Show() dict
