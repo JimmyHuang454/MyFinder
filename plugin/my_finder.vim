@@ -50,6 +50,15 @@ endfunction
 command! FinderTogglePreview call myfinder#core#toggle_preview()
 command! -nargs=1 FinderPreviewLayout call myfinder#core#set_preview_layout(<q-args>)
 
+augroup MyFinderFugitive
+  autocmd!
+  " a no-op unless vim-fugitive is installed (see autoload/myfinder/fugitive.vim)
+  autocmd User FugitiveIndex call myfinder#fugitive#wrap_maps()
+  autocmd FileType fugitive,git call myfinder#fugitive#maps()
+  " fallback in case the status buffer's maps are (re)defined after the event
+  autocmd BufWinEnter * if &filetype ==# 'fugitive' | call myfinder#fugitive#wrap_maps() | endif
+augroup END
+
 augroup MyFinderMarks
   autocmd!
   autocmd BufEnter * call myfinder#finders#mark#restore_signs_for_buffer()

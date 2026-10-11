@@ -1,20 +1,17 @@
 " Files changed by a commit: status, +added -deleted lines, with a diff preview.
-" <CR> opens a two-window diff (left: parent, right: commit) in a new tab while
-" this finder stays alive. In the diff tab ]f / [f jump to the next / previous
-" changed file; q / gF / :q leaves diff mode, closes the tab and returns to the
-" finder.
+" <CR> opens a two-window diff (left: parent, right: commit) in the shared diff
+" tab (see myfinder#difftab) while this finder stays alive. In the diff tab
+" ]f / [f jump to the next / previous changed file; q / gF / :q leave diff mode
+" and return to this finder.
 "
 " Uses plain git; vim-fugitive is optional (used for the revision under the
 " cursor in fugitive buffers, and for the diff buffers if it is installed).
 "
-" Customize the keys inside the diff windows with:
-"   let g:myfinder_git_diff_keys = {'next': ']f', 'prev': '[f', 'back': 'gF', 'quit': 'q'}
+" Customize ]f / [f with:
+"   let g:myfinder_git_diff_keys = {'next': ']f', 'prev': '[f'}
+" (q / gF belong to the diff tab: g:myfinder_difftab_keys)
 
 let s:pending = {}
-let s:origin = {}
-let s:diff_wins = {}
-let s:switching = 0
-let s:watch_timer = -1
 
 function! s:Highlight() abort
   highlight default MyFinderDiffStat guifg=#e5c07b ctermfg=3
@@ -178,14 +175,7 @@ function! s:Open() dict
     call timer_stop(self.preview_timer)
     let self.preview_timer = -1
   endif
-  call myfinder#core#suspend(self)
-  let s:origin = {'winid': win_getid(), 'ctx': self}
-  try
-    call s:Show(s:pending, self.selected.idx)
-  catch
-    call myfinder#core#resume(self)
-    call myfinder#utils#echo(v:exception, 'error')
-  endtry
+  call s:Show(s:pending, self.selected.idx, self)
 endfunction
 
 function! s:Preview() dict
@@ -216,87 +206,35 @@ function! s:Edit(state, rev, file) abort
 endfunction
 
 function! s:Maps() abort
-  let l:keys = extend({'next': ']f', 'prev': '[f', 'back': 'gF', 'quit': 'q'}, get(g:, 'myfinder_git_diff_keys', {}))
+  let l:keys = extend({'next': ']f', 'prev': '[f'}, get(g:, 'myfinder_git_diff_keys', {}))
   execute 'nnoremap <buffer><silent> ' . l:keys.next . ' :call myfinder#finders#git_diff#move(1)<CR>'
   execute 'nnoremap <buffer><silent> ' . l:keys.prev . ' :call myfinder#finders#git_diff#move(-1)<CR>'
-  execute 'nnoremap <buffer><silent> ' . l:keys.back . ' :call myfinder#finders#git_diff#back()<CR>'
-  " Buffer-local :q, so it wins over any other mapping of this key; closing the
-  " window is then noticed by the watcher, which closes the tab
-  if l:keys.quit !=# ''
-    execute 'nnoremap <buffer><silent> ' . l:keys.quit . ' :q<CR>'
+endfunction
+
+" Show file idx in the shared diff tab (a new one, or the current diff tab)
+function! s:Show(state, idx, ctx) abort
+  let l:opts = {'on_maps': function('s:Maps')}
+  if !empty(a:ctx)
+    let l:opts.ctx = a:ctx
   endif
+  call myfinder#difftab#open(function('s:Setup', [a:state, a:idx]), l:opts)
 endfunction
 
-" Show file idx in a reusable tab: left = parent, right = commit
-function! s:Show(state, idx) abort
-  let s:switching = 1
-  try
-    call s:ShowFile(a:state, a:idx)
-  finally
-    let s:switching = 0
-  endtry
-  " Remember the diff windows so that closing one of them closes the tab
-  let s:diff_wins = {}
-  for l:nr in range(1, winnr('$'))
-    let s:diff_wins[win_getid(l:nr)] = 1
-  endfor
-  call s:StartWatch()
-endfunction
-
-" Poll the diff windows: when any of them is gone (:q, :close, <C-w>c, ZZ,
-" :tabclose, ...) close the whole diff tab and go back to the finder.
-" This does not depend on which command closed the window.
-function! s:StartWatch() abort
-  if s:watch_timer == -1
-    let s:watch_timer = timer_start(100, function('s:Watch'), {'repeat': -1})
-  endif
-endfunction
-
-function! s:StopWatch() abort
-  if s:watch_timer != -1
-    call timer_stop(s:watch_timer)
-    let s:watch_timer = -1
-  endif
-endfunction
-
-function! s:Watch(timer) abort
-  if s:switching || empty(s:diff_wins)
-    return
-  endif
-  for l:id in keys(s:diff_wins)
-    if win_id2tabwin(str2nr(l:id))[0] == 0
-      call s:Finish(a:timer)
-      return
-    endif
-  endfor
-endfunction
-
-function! s:ShowFile(state, idx) abort
+" Build the diff windows in the current (diff) tab: left = parent, right = commit
+function! s:Setup(state, idx) abort
   let l:f = a:state.files[a:idx]
   let l:sha = a:state.sha
-
-  if exists('t:myfinder_git_diff')
-    silent! only
-    silent! diffoff!
-  else
-    " Fugitive resolves paths from the current buffer, so create the tab first
-    tabnew
-  endif
   let t:myfinder_git_diff = {'state': a:state, 'idx': a:idx}
 
   if l:f.status ==# 'D'
     call s:Edit(a:state, l:sha . '^', l:f.file)
-    call s:Maps()
   elseif l:f.status ==# 'A' || !a:state.has_parent
     call s:Edit(a:state, l:sha, l:f.file)
-    call s:Maps()
   else
     call s:Edit(a:state, l:sha, l:f.file)
-    call s:Maps()
     diffthis
     leftabove vertical new
     call s:Edit(a:state, l:sha . '^', l:f.file)
-    call s:Maps()
     diffthis
     wincmd l
     silent! normal! gg]czz
@@ -326,30 +264,5 @@ function! myfinder#finders#git_diff#move(step) abort
   endif
   let l:state = t:myfinder_git_diff.state
   let l:n = len(l:state.files)
-  call s:Show(l:state, (t:myfinder_git_diff.idx + a:step + l:n) % l:n)
-endfunction
-
-" Leave diff mode, close the diff tab and go back to the finder
-function! s:Finish(timer) abort
-  call s:StopWatch()
-  let l:ids = keys(s:diff_wins)
-  let s:diff_wins = {}
-  for l:id in l:ids
-    let l:tw = win_id2tabwin(str2nr(l:id))
-    if l:tw[0] > 0
-      call win_gotoid(str2nr(l:id))
-      silent! diffoff!
-      execute 'silent! tabclose ' . l:tw[0]
-      break
-    endif
-  endfor
-  if !empty(s:origin) && win_gotoid(s:origin.winid)
-    call myfinder#core#resume(s:origin.ctx)
-  endif
-  let s:origin = {}
-  redraw!
-endfunction
-
-function! myfinder#finders#git_diff#back() abort
-  call timer_start(0, function('s:Finish'))
+  call s:Show(l:state, (t:myfinder_git_diff.idx + a:step + l:n) % l:n, {})
 endfunction
