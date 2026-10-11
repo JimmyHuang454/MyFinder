@@ -5,6 +5,9 @@
 " It only does something when fugitive is installed. Disable it with:
 "   let g:myfinder_fugitive_difftab = 0
 "
+" On a commit line (under "Unpushed to" / "Unpulled from") dd lists the files
+" changed by that commit with :FinderGitDiff instead.
+"
 " How: fugitive opens the diff as usual, then the buffers of the diff windows
 " are shown in a new diff tab and the current tab is put back to the layout it
 " had before the diff was opened. fugitive's own mappings are wrapped, not
@@ -62,6 +65,16 @@ function! myfinder#fugitive#adopt() abort
   call win_gotoid(l:cur)
 endfunction
 
+" Hash of the commit on the cursor line of the :Git status buffer (the lines under
+" "Unpushed to" / "Unpulled from"), or ''.
+function! myfinder#fugitive#commit_at_cursor() abort
+  return matchstr(getline('.'), '^\x\{7,40}\ze\s')
+endfunction
+
+function! myfinder#fugitive#open_commit() abort
+  execute 'FinderGitDiff ' . myfinder#fugitive#commit_at_cursor()
+endfunction
+
 " Called on User FugitiveIndex (the :Git status buffer has just been set up)
 function! myfinder#fugitive#wrap_maps() abort
   if !s:Enabled()
@@ -72,8 +85,18 @@ function! myfinder#fugitive#wrap_maps() abort
     if empty(l:m) || !get(l:m, 'buffer', 0) || l:m.rhs =~# 'myfinder#fugitive'
       continue
     endif
-    let l:m.rhs = substitute(l:m.rhs, '^:<C-U>', ':<C-U>call myfinder#fugitive#snapshot()<Bar>', '')
-    let l:m.rhs = substitute(l:m.rhs, '<CR>$', '<Bar>call myfinder#fugitive#adopt()<CR>', '')
+    " ':<C-U>BODY<CR>'  ->  on a commit line (dd only) list its files in
+    " MyFinder, otherwise run BODY with the diff moved into the diff tab
+    let l:body = substitute(substitute(l:m.rhs, '^:<C-U>', '', ''), '<CR>$', '', '')
+    let l:new = ':<C-U>'
+    if l:key ==# 'dd'
+      let l:new .= 'if myfinder#fugitive#commit_at_cursor() !=# ""<Bar>call myfinder#fugitive#open_commit()<Bar>else<Bar>'
+    endif
+    let l:new .= 'call myfinder#fugitive#snapshot()<Bar>' . l:body . '<Bar>call myfinder#fugitive#adopt()'
+    if l:key ==# 'dd'
+      let l:new .= '<Bar>endif'
+    endif
+    let l:m.rhs = l:new . '<CR>'
     call mapset('n', 0, l:m)
   endfor
 endfunction
