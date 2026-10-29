@@ -1,5 +1,15 @@
 " autoload/myfinder/ctags.vim
 
+let s:tex_kinds = {
+      \ 'p': 'part',
+      \ 'c': 'chapter',
+      \ 's': 'section',
+      \ 'u': 'subsection',
+      \ 'b': 'subsubsection',
+      \ 'P': 'paragraph',
+      \ 'G': 'subparagraph',
+      \ }
+
 function! myfinder#finders#ctags#start(...) abort
   let l:scope = get(a:, 1, 'file')
   let l:start_time = reltime()
@@ -32,7 +42,11 @@ function! myfinder#finders#ctags#start(...) abort
     let l:cmd = get(l:tag, 'cmd', '')
     
     let l:file_display = fnamemodify(l:file, ':t')
-    
+
+    if l:file =~? '\.\(tex\|sty\|cls\)$'
+      let l:kind = get(s:tex_kinds, l:kind, l:kind)
+    endif
+
     let l:lnum = 0
     if l:cmd =~# '^\d\+$'
       let l:lnum = str2nr(l:cmd)
@@ -50,6 +64,8 @@ function! myfinder#finders#ctags#start(...) abort
     call myfinder#utils#setFiletype(l:item, l:file)
     call add(l:items, l:item)
   endfor
+
+  call s:NumberTexItems(l:items)
 
   let l:display = ['lnum', 'kind', 'text']
 
@@ -73,6 +89,53 @@ function! myfinder#finders#ctags#start(...) abort
         \ 'start_time': l:start_time,
         \ 'preview_enabled': l:preview_enabled,
         \ })
+endfunction
+
+" Sort tex items by file/line and prefix headings with their number (1, 1.1, ...).
+function! s:NumberTexItems(items) abort
+  let l:levels = {'chapter': 1, 'section': 2, 'subsection': 3,
+        \ 'subsubsection': 4, 'paragraph': 5, 'subparagraph': 6}
+
+  let l:has_tex = 0
+  for l:item in a:items
+    if l:item.path =~? '\.\(tex\|sty\|cls\)$'
+      let l:has_tex = 1
+      break
+    endif
+  endfor
+  if !l:has_tex
+    return
+  endif
+
+  call sort(a:items, {a, b -> a.path ==# b.path ? a.lnum - b.lnum : (a.path <# b.path ? -1 : 1)})
+
+  " Shallowest level used per file, so \section-only articles start at "1".
+  let l:top = {}
+  for l:item in a:items
+    let l:lv = get(l:levels, l:item.kind, 0)
+    if l:lv && (!has_key(l:top, l:item.path) || l:lv < l:top[l:item.path])
+      let l:top[l:item.path] = l:lv
+    endif
+  endfor
+
+  let l:cur_path = ''
+  let l:counters = []
+  for l:item in a:items
+    let l:lv = get(l:levels, l:item.kind, 0)
+    if !l:lv
+      continue
+    endif
+    if l:item.path !=# l:cur_path
+      let l:cur_path = l:item.path
+      let l:counters = repeat([0], 7)
+    endif
+    let l:counters[l:lv] += 1
+    for l:i in range(l:lv + 1, 6)
+      let l:counters[l:i] = 0
+    endfor
+    let l:nums = map(l:counters[l:top[l:item.path] : l:lv], 'string(v:val)')
+    let l:item.text = join(l:nums, '.') . ' ' . l:item.text
+  endfor
 endfunction
 
 function! s:RefreshTags() dict
@@ -109,6 +172,8 @@ function! s:GenerateTags(scope) abort
         \ 'scheme': '--scheme-kinds=f',
         \ 'sh': '--sh-kinds=f',
         \ 'sql': '--sql-kinds=f',
+        \ 'tex': '--tex-kinds=pcsubPG',
+        \ 'plaintex': '--tex-kinds=pcsubPG --language-force=Tex',
         \ 'tcl': '--tcl-kinds=m',
         \ 'verilog': '--verilog-kinds=f',
         \ 'vim': '--vim-kinds=f',
