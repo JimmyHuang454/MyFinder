@@ -12,8 +12,8 @@
 "                             e.g. ['-S', '--hidden', '-g', '!*.min.js']
 "   g:myfinder_rg_debounce_ms keystroke debounce before (re)starting rg.
 "                             Default: 120. 0 disables debounce.
-"   g:myfinder_rg_max_results max items kept per search. Default: 500.
-"                             0 means unlimited.
+"   g:myfinder_rg_max_results max items kept per search. Default: 0 (unlimited).
+"   g:myfinder_rg_fuzzy       enable fuzzy matching in rg search. Default: 1.
 "   g:myfinder_rg_search_root where to search:
 "                             ''   -> current working directory (default)
 "                             'git'-> git repository root of the current file
@@ -31,6 +31,7 @@ function! myfinder#finders#rg#start(query) abort
     return
   endif
 
+  let l:dynamic = empty(a:query)
   let l:ctx = myfinder#core#start([], {
         \ 'on_change': function('s:OnInputChange'),
         \ 'preview': function('myfinder#actions#preview'),
@@ -49,7 +50,7 @@ function! myfinder#finders#rg#start(query) abort
         \   {'match': '^[^:]\+', 'link': 'String'},
         \   {'match': ':\d\+:', 'link': 'Number'},
         \ ],
-        \ 'dynamic_search': 1,
+        \ 'dynamic_search': l:dynamic,
         \ })
 
   " --- search lifecycle state -----------------------------------------
@@ -65,6 +66,7 @@ function! myfinder#finders#rg#start(query) abort
   let l:ctx.rg_stderr = ''            " accumulated stderr (errors)
   let l:ctx.rg_truncated = 0          " result cap reached
   let l:ctx.rg_literal = 0            " current run uses -F
+  let l:ctx.rg_fuzzy = 0              " current run uses fuzzy regex
   let l:ctx.rg_exit_code = -1         " vim8 exit status
   let l:ctx.rg_ch_closed = 0          " vim8 channel closed flag
   let l:ctx.rg_root = s:ResolveRoot()
@@ -90,11 +92,27 @@ function! s:GetDebounce() abort
 endfunction
 
 function! s:GetMaxResults() abort
-  return get(g:, 'myfinder_rg_max_results', 500)
+  return get(g:, 'myfinder_rg_max_results', 0)
 endfunction
 
 function! s:GetLiteralFallback() abort
   return get(g:, 'myfinder_rg_literal_fallback', 1)
+endfunction
+
+function! s:GetFuzzy() abort
+  return get(g:, 'myfinder_rg_fuzzy', 1)
+endfunction
+
+" Convert a query string into a fuzzy regex pattern where each non-whitespace
+" character appears in order on the same line (e.g. 'mk' -> 'm.*?k').
+function! myfinder#finders#rg#_fuzzy_regex(query) abort
+  let l:clean = substitute(a:query, '\s\+', '', 'g')
+  if empty(l:clean)
+    return ''
+  endif
+  let l:chars = split(l:clean, '\zs')
+  call map(l:chars, 'escape(v:val, ''\.+*?()|[]{}^$'')')
+  return join(l:chars, '.*?')
 endfunction
 
 " =====================================================================
@@ -180,6 +198,10 @@ function! s:StartRg(ctx, query, ...) abort
 
   let a:ctx.rg_query = a:query
   let l:literal = get(a:000, 0, 0)
+  let l:fuzzy = get(a:000, 1, get(a:ctx, 'dynamic_search', 0) && s:GetFuzzy())
+  if l:literal || a:query ==# '^'
+    let l:fuzzy = 0
+  endif
 
   " Stop any previous run and invalidate its callbacks.
   call s:StopAll(a:ctx)
@@ -194,6 +216,7 @@ function! s:StartRg(ctx, query, ...) abort
   let a:ctx.rg_stderr = ''
   let a:ctx.rg_truncated = 0
   let a:ctx.rg_literal = l:literal
+  let a:ctx.rg_fuzzy = l:fuzzy
   let a:ctx.rg_exit_code = -1
   let a:ctx.rg_ch_closed = 0
 
@@ -204,9 +227,14 @@ function! s:StartRg(ctx, query, ...) abort
     return
   endif
 
-  " Re-render immediately so the stale results of the previous query are
-  " replaced while rg runs.
-  call a:ctx.update_res()
+  let l:pattern = a:query
+  if l:fuzzy
+    let l:pattern = myfinder#finders#rg#_fuzzy_regex(a:query)
+    if empty(l:pattern)
+      call a:ctx.update_res()
+      return
+    endif
+  endif
 
   let l:cmd = ['rg', '--json']
   call extend(l:cmd, s:GetExtraArgs())
@@ -215,7 +243,7 @@ function! s:StartRg(ctx, query, ...) abort
     call add(l:cmd, '-F')
   endif
   call add(l:cmd, '-e')
-  call add(l:cmd, a:query)
+  call add(l:cmd, l:pattern)
   call add(l:cmd, s:RootArg(a:ctx.rg_root))
 
   if has('nvim')
@@ -266,6 +294,9 @@ function! s:OnInputChange(ctx, query) abort
   endif
 
   let l:effective_query = empty(a:query) ? get(a:ctx, 'rg_initial_query', '') : a:query
+  if empty(l:effective_query)
+    return
+  endif
   let l:debounce = s:GetDebounce()
   if l:debounce <= 0
     call s:StartRg(a:ctx, l:effective_query)
@@ -374,11 +405,14 @@ endfunction
 
 function! s:DecodeLines(ctx, seq, lines) abort
   if a:ctx.rg_truncated | return | endif
-  let l:max = s:GetMaxResults()
+  let l:max = get(a:ctx, 'rg_query', '') ==# '^' ? 0 : s:GetMaxResults()
+  let l:need_hl = !get(a:ctx, 'rg_fuzzy', 0) && get(a:ctx, 'rg_query', '') !=# '^'
 
   for l:line in a:lines
     if a:seq != a:ctx.rg_seq || a:ctx.rg_truncated | return | endif
-    if empty(l:line) | continue | endif
+    if stridx(l:line, '{"type":"match"') != 0
+      continue
+    endif
 
     let l:decoded = v:null
     try
@@ -390,7 +424,7 @@ function! s:DecodeLines(ctx, seq, lines) abort
       continue
     endif
 
-    let l:item = s:MatchToItem(l:decoded.data)
+    let l:item = s:MatchToItem(l:decoded.data, l:need_hl)
     call add(a:ctx.items, l:item)
 
     if l:max > 0 && len(a:ctx.items) >= l:max
@@ -413,7 +447,8 @@ function! s:DecodeLines(ctx, seq, lines) abort
 endfunction
 
 " Convert one rg JSON 'match' payload into a list item.
-function! s:MatchToItem(data) abort
+function! s:MatchToItem(data, ...) abort
+  let l:need_hl = get(a:000, 0, 1)
   let l:path = get(a:data, 'path', {})
   let l:path_text = get(l:path, 'text', '')
   " 'rg --json pattern .' prefixes paths with './'; strip it for display.
@@ -424,13 +459,7 @@ function! s:MatchToItem(data) abort
   let l:lnum = get(a:data, 'line_number', 0)
   let l:lines = get(a:data, 'lines', {})
   let l:raw = type(l:lines) == v:t_dict ? get(l:lines, 'text', '') : ''
-  let l:raw = substitute(l:raw, '\r\?\n$', '', '')
   let l:text = trim(l:raw)
-
-  " Byte offset of the first non-whitespace char: used to translate rg's
-  " byte offsets (relative to the raw line) onto the trimmed display text.
-  let l:lead = matchend(l:raw, '^\s*')
-  if l:lead < 0 | let l:lead = 0 | endif
 
   let l:item = {
         \ 'text': l:text,
@@ -448,23 +477,30 @@ function! s:MatchToItem(data) abort
     let l:item.col = get(l:first, 'start', 0) + 1
     if l:item.col < 1 | let l:item.col = 1 | endif
 
-    " Highlight matched spans on the trimmed display text.
-    for l:sub in l:subs
-      let l:start = get(l:sub, 'start', 0)
-      let l:len = get(l:sub, 'end', l:start) - l:start
-      let l:dstart = l:start - l:lead + 1
-      if l:len <= 0
-        continue
-      endif
-      " Clamp to the trimmed text (trailing whitespace / newline removed).
-      let l:dend = l:dstart + l:len - 1
-      if l:dend > strlen(l:text)
-        let l:len = strlen(l:text) - l:dstart + 1
-      endif
-      if l:dstart > 0 && l:len > 0
-        call add(l:item.highlights, [l:dstart, l:len])
-      endif
-    endfor
+    if l:need_hl
+      " Byte offset of the first non-whitespace char: used to translate rg's
+      " byte offsets (relative to the raw line) onto the trimmed display text.
+      let l:lead = matchend(l:raw, '^\s*')
+      if l:lead < 0 | let l:lead = 0 | endif
+
+      " Highlight matched spans on the trimmed display text.
+      for l:sub in l:subs
+        let l:start = get(l:sub, 'start', 0)
+        let l:len = get(l:sub, 'end', l:start) - l:start
+        let l:dstart = l:start - l:lead + 1
+        if l:len <= 0
+          continue
+        endif
+        " Clamp to the trimmed text (trailing whitespace / newline removed).
+        let l:dend = l:dstart + l:len - 1
+        if l:dend > strlen(l:text)
+          let l:len = strlen(l:text) - l:dstart + 1
+        endif
+        if l:dstart > 0 && l:len > 0
+          call add(l:item.highlights, [l:dstart, l:len])
+        endif
+      endfor
+    endif
   endif
 
   return l:item
@@ -522,7 +558,15 @@ function! s:FinishSearch(ctx, seq, code) abort
         \ && s:GetLiteralFallback()
         \ && !empty(a:ctx.rg_stderr) && a:ctx.rg_stderr =~# 'regex parse error'
     " Defer the restart one tick so it never runs inside a job callback.
-    call timer_start(1, function('s:StartRg', [a:ctx, a:ctx.rg_query, 1]))
+    call timer_start(1, function('s:StartRg', [a:ctx, a:ctx.rg_query, 1, 0]))
+    return
+  endif
+
+  " When an initial query had no literal/regex matches, retry as fuzzy regex.
+  if a:code != 0 && !a:ctx.rg_truncated && empty(a:ctx.items)
+        \ && empty(a:ctx.rg_stderr) && !get(a:ctx, 'rg_fuzzy', 0)
+        \ && s:GetFuzzy() && get(a:ctx, 'rg_query', '') !=# '^'
+    call timer_start(1, function('s:StartRg', [a:ctx, a:ctx.rg_query, 0, 1]))
     return
   endif
 
@@ -539,5 +583,10 @@ function! s:FinishSearch(ctx, seq, code) abort
     return
   endif
 
-  call s:Update(a:ctx, a:seq)
+  if a:ctx.rg_timer != -1
+    call timer_stop(a:ctx.rg_timer)
+    let a:ctx.rg_timer = -1
+  endif
+  let a:ctx.rg_pending = 0
+  call a:ctx.update_res()
 endfunction

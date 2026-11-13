@@ -40,19 +40,27 @@ function! s:CtxUpdateRes() dict
         call call(l:OnChange, [self, self.filter], self)
       endif
     endif
-    " In dynamic mode, items are managed by external source
+  endif
+
+  let l:fuzzy_filter = self.filter
+  if empty(l:fuzzy_filter) && get(self, 'rg_fuzzy', 0)
+    let l:fuzzy_filter = get(self, 'rg_query', '')
+  endif
+
+  if empty(l:fuzzy_filter)
     let self.matches = self.items
-  else
-    if empty(self.filter)
-      let self.matches = self.items
-      if has_key(self, 'match_positions')
-        unlet self.match_positions
-      endif
-    else
-      let l:res = matchfuzzypos(self.items, self.filter, {'key': self.match_item})
-      let self.matches = l:res[0]
-      let self.match_positions = l:res[1]
+    if has_key(self, 'match_positions')
+      unlet self.match_positions
     endif
+  elseif empty(self.items)
+    let self.matches = []
+    if has_key(self, 'match_positions')
+      unlet self.match_positions
+    endif
+  else
+    let l:res = matchfuzzypos(self.items, l:fuzzy_filter, {'key': self.match_item})
+    let self.matches = l:res[0]
+    let self.match_positions = l:res[1]
   endif
   
   let l:content = s:BuildContent(self)
@@ -576,10 +584,8 @@ function! s:ApplyHighLights(ctx) abort
     endif
   endif
   
-  if empty(a:ctx.filter) || empty(a:ctx.matches)
-    if !get(a:ctx, 'dynamic_search', 0)
-      return
-    endif
+  if empty(a:ctx.matches)
+    return
   endif
   
   let l:max_hl = min([len(a:ctx.matches), a:ctx.render_limit])
@@ -592,20 +598,6 @@ function! s:ApplyHighLights(ctx) abort
     let l:offset = 0
     if l:midx != -1 && i < len(a:ctx.col_spans) && l:midx < len(a:ctx.col_spans[i])
       let l:offset = a:ctx.col_spans[i][l:midx][0] - 1
-    endif
-    
-    if has_key(l:item, 'highlights')
-      let l:hl_positions = []
-      for l:hl in l:item.highlights
-        " hl is [col, len]
-        " Ensure we don't go out of bounds or invalid values
-        if l:hl[0] > 0 && l:hl[1] > 0
-          call add(l:hl_positions, [l:line_num, l:hl[0] + l:offset, l:hl[1]])
-        endif
-      endfor
-      if !empty(l:hl_positions)
-        call add(l:cmds, "call matchaddpos('FinderMatch', " . string(l:hl_positions) . ")")
-      endif
     endif
 
     if has_key(a:ctx, 'match_positions')
@@ -627,6 +619,18 @@ function! s:ApplyHighLights(ctx) abort
       
       if !empty(l:hl_positions)
          call add(l:cmds, "call matchaddpos('FinderMatch', " . string(l:hl_positions) . ")")
+      endif
+    elseif has_key(l:item, 'highlights')
+      let l:hl_positions = []
+      for l:hl in l:item.highlights
+        " hl is [col, len]
+        " Ensure we don't go out of bounds or invalid values
+        if l:hl[0] > 0 && l:hl[1] > 0
+          call add(l:hl_positions, [l:line_num, l:hl[0] + l:offset, l:hl[1]])
+        endif
+      endfor
+      if !empty(l:hl_positions)
+        call add(l:cmds, "call matchaddpos('FinderMatch', " . string(l:hl_positions) . ")")
       endif
     endif
   endfor
