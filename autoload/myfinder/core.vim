@@ -35,8 +35,9 @@ function! s:CtxUpdateRes() dict
     let l:last = get(self, 'last_filter', '')
     if self.filter !=# l:last
       let self.last_filter = self.filter
-      if has_key(self, 'on_change')
-        call self.on_change(self, self.filter)
+      let l:OnChange = get(self, 'on_change', get(self.actions, 'on_change', ''))
+      if !empty(l:OnChange)
+        call call(l:OnChange, [self, self.filter], self)
       endif
     endif
     " In dynamic mode, items are managed by external source
@@ -98,6 +99,8 @@ function! myfinder#core#start(items, actions, ...) abort
         \ 'match_item': get(l:options, 'match_item', 'text'),
         \ 'columns_hl': get(l:options, 'columns_hl', []),
         \ 'align_columns': get(l:options, 'align_columns', len(get(l:options, 'display', ['text']))),
+        \ 'dynamic_search': get(l:options, 'dynamic_search', 0),
+        \ 'on_change': get(a:actions, 'on_change', get(l:options, 'on_change', '')),
         \ 'status': get(l:options, 'status', ''),
         \ 'filter': '',
         \ 'winid': 0,
@@ -844,7 +847,7 @@ function! s:ShowActions(ctx) abort
   let l:shortcuts = a:ctx.action_shortcuts
   
   " Collect available actions
-  let l:avail = keys(a:ctx.actions)
+  let l:avail = filter(keys(a:ctx.actions), 'v:val !=# "on_change"')
   
   " Add 'preview_once' if 'preview' capability exists
   if has_key(a:ctx.actions, 'preview') && index(l:avail, 'preview_once') == -1

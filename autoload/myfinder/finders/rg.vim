@@ -53,6 +53,7 @@ function! myfinder#finders#rg#start(query) abort
         \ })
 
   " --- search lifecycle state -----------------------------------------
+  let l:ctx.rg_initial_query = a:query
   let l:ctx.rg_job_id = -1            " nvim job id of the current job
   let l:ctx.rg_job = 0                " vim8 job of the current job (0 = none)
   let l:ctx.rg_has_job = 0            " a vim8 job is currently running
@@ -64,6 +65,8 @@ function! myfinder#finders#rg#start(query) abort
   let l:ctx.rg_stderr = ''            " accumulated stderr (errors)
   let l:ctx.rg_truncated = 0          " result cap reached
   let l:ctx.rg_literal = 0            " current run uses -F
+  let l:ctx.rg_exit_code = -1         " vim8 exit status
+  let l:ctx.rg_ch_closed = 0          " vim8 channel closed flag
   let l:ctx.rg_root = s:ResolveRoot()
 
   " Hook cleanup into quit so running jobs/timers never outlive the popup.
@@ -71,6 +74,7 @@ function! myfinder#finders#rg#start(query) abort
   let l:ctx.quit = function('s:RgQuit')
 
   call s:StartRg(l:ctx, a:query)
+  return l:ctx
 endfunction
 
 " =====================================================================
@@ -78,7 +82,7 @@ endfunction
 " =====================================================================
 
 function! s:GetExtraArgs() abort
-  return get(g:, 'myfinder_rg_extra_args', [])
+  return get(g:, 'myfinder_rg_extra_args', ['-S'])
 endfunction
 
 function! s:GetDebounce() abort
@@ -190,6 +194,8 @@ function! s:StartRg(ctx, query, ...) abort
   let a:ctx.rg_stderr = ''
   let a:ctx.rg_truncated = 0
   let a:ctx.rg_literal = l:literal
+  let a:ctx.rg_exit_code = -1
+  let a:ctx.rg_ch_closed = 0
 
   " Empty pattern: don't dump every line of the tree (that is what the
   " RgAllLine entry point, pattern '^', is for). Just clear the list.
@@ -229,6 +235,7 @@ function! s:StartRg(ctx, query, ...) abort
     let l:job = job_start(l:cmd, {
           \ 'out_cb': function('s:VimOutHandler', [a:ctx, l:seq]),
           \ 'err_cb': function('s:VimErrHandler', [a:ctx, l:seq]),
+          \ 'close_cb': function('s:VimCloseHandler', [a:ctx, l:seq]),
           \ 'exit_cb': function('s:VimExitHandler', [a:ctx, l:seq]),
           \ 'mode': 'nl',
           \ })
@@ -258,13 +265,14 @@ function! s:OnInputChange(ctx, query) abort
     let a:ctx.rg_restart_timer = -1
   endif
 
+  let l:effective_query = empty(a:query) ? get(a:ctx, 'rg_initial_query', '') : a:query
   let l:debounce = s:GetDebounce()
   if l:debounce <= 0
-    call s:StartRg(a:ctx, a:query)
+    call s:StartRg(a:ctx, l:effective_query)
     return
   endif
   let a:ctx.rg_restart_timer = timer_start(l:debounce,
-        \ function('s:DebouncedRestart', [a:ctx, a:query]))
+        \ function('s:DebouncedRestart', [a:ctx, l:effective_query]))
 endfunction
 
 function! s:DebouncedRestart(ctx, query, ...) abort
@@ -307,11 +315,24 @@ function! s:VimErrHandler(ctx, seq, channel, msg) abort
   call s:CollectStderr(a:ctx, [a:msg])
 endfunction
 
+function! s:VimCloseHandler(ctx, seq, channel) abort
+  if a:seq != a:ctx.rg_seq
+    return
+  endif
+  let a:ctx.rg_ch_closed = 1
+  if a:ctx.rg_exit_code != -1
+    call s:FinishSearch(a:ctx, a:seq, a:ctx.rg_exit_code)
+  endif
+endfunction
+
 function! s:VimExitHandler(ctx, seq, job, status) abort
   if a:seq != a:ctx.rg_seq
     return
   endif
-  call s:FinishSearch(a:ctx, a:seq, a:status)
+  let a:ctx.rg_exit_code = a:status
+  if a:ctx.rg_ch_closed
+    call s:FinishSearch(a:ctx, a:seq, a:status)
+  endif
 endfunction
 
 function! s:CollectStderr(ctx, data) abort
@@ -352,10 +373,11 @@ function! s:ProcessLines(ctx, seq, lines) abort
 endfunction
 
 function! s:DecodeLines(ctx, seq, lines) abort
+  if a:ctx.rg_truncated | return | endif
   let l:max = s:GetMaxResults()
 
   for l:line in a:lines
-    if a:seq != a:ctx.rg_seq | return | endif
+    if a:seq != a:ctx.rg_seq || a:ctx.rg_truncated | return | endif
     if empty(l:line) | continue | endif
 
     let l:decoded = v:null
@@ -379,8 +401,10 @@ function! s:DecodeLines(ctx, seq, lines) abort
             \ })
       call s:StopJob(a:ctx)
       call s:Update(a:ctx, a:seq)
-      call myfinder#utils#echo(
-            \ printf('Result limit (%d) reached, search stopped', l:max), 'warn')
+      if get(a:ctx, 'rg_query', '') !=# '^'
+        call myfinder#utils#echo(
+              \ printf('Result limit (%d) reached, search stopped', l:max), 'warn')
+      endif
       return
     endif
   endfor
@@ -461,8 +485,11 @@ function! s:Update(ctx, seq, ...) abort
   if a:seq != a:ctx.rg_seq
     return
   endif
+  if a:ctx.rg_timer != -1
+    call timer_stop(a:ctx.rg_timer)
+    let a:ctx.rg_timer = -1
+  endif
   let a:ctx.rg_pending = 0
-  let a:ctx.rg_timer = -1
   if empty(a:ctx.items) && !a:ctx.rg_truncated
     return
   endif
